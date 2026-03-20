@@ -1,0 +1,116 @@
+import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+
+const id = () => text("id").primaryKey().$defaultFn(() => crypto.randomUUID());
+const timestamp = (name: string) => text(name).default(sql`(datetime('now'))`);
+
+// ── Users ──
+export const users = sqliteTable("users", {
+  id: id(),
+  email: text("email").notNull().unique(),
+  name: text("name").notNull(),
+  role: text("role", { enum: ["owner", "sales_manager", "warehouse", "finance", "marketing", "support", "ai"] }).notNull().default("support"),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  lastLoginAt: text("last_login_at"),
+  createdAt: timestamp("created_at"),
+  updatedAt: timestamp("updated_at"),
+});
+
+// ── API Keys ──
+export const apiKeys = sqliteTable("api_keys", {
+  id: id(),
+  name: text("name").notNull(),
+  keyHash: text("key_hash").notNull().unique(),
+  userId: text("user_id").references(() => users.id),
+  permissions: text("permissions", { mode: "json" }).$type<string[]>(),
+  lastUsedAt: text("last_used_at"),
+  expiresAt: text("expires_at"),
+  createdAt: timestamp("created_at"),
+});
+
+// ── Error Logs ──
+export const errorLogs = sqliteTable("error_logs", {
+  id: id(),
+  timestamp: timestamp("timestamp"),
+  level: text("level", { enum: ["error", "warn", "critical"] }).notNull(),
+  source: text("source").notNull(),
+  message: text("message").notNull(),
+  stackTrace: text("stack_trace"),
+  requestMethod: text("request_method"),
+  requestPath: text("request_path"),
+  requestBody: text("request_body"),
+  userId: text("user_id"),
+  ipAddress: text("ip_address"),
+  metadata: text("metadata", { mode: "json" }),
+  resolved: integer("resolved", { mode: "boolean" }).notNull().default(false),
+  resolvedAt: text("resolved_at"),
+  resolvedBy: text("resolved_by"),
+});
+
+// ── Change Logs (immutable audit trail) ──
+export const changeLogs = sqliteTable("change_logs", {
+  id: id(),
+  timestamp: timestamp("timestamp"),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  field: text("field").notNull(),
+  oldValue: text("old_value"),
+  newValue: text("new_value"),
+  userId: text("user_id"),
+  source: text("source", { enum: ["ui", "api", "agent", "system", "webhook"] }).notNull(),
+  agentType: text("agent_type"),
+  requestId: text("request_id"),
+});
+
+// ── Reporting Logs ──
+export const reportingLogs = sqliteTable("reporting_logs", {
+  id: id(),
+  timestamp: timestamp("timestamp"),
+  eventType: text("event_type").notNull(),
+  module: text("module").notNull(),
+  userId: text("user_id"),
+  metadata: text("metadata", { mode: "json" }),
+  durationMs: integer("duration_ms"),
+  tokensUsed: integer("tokens_used"),
+  costCents: integer("cost_cents"),
+});
+
+// ── Activity Feed ──
+export const activityFeed = sqliteTable("activity_feed", {
+  id: id(),
+  eventType: text("event_type").notNull(),
+  module: text("module").notNull(),
+  entityType: text("entity_type"),
+  entityId: text("entity_id"),
+  data: text("data", { mode: "json" }),
+  userId: text("user_id"),
+  createdAt: timestamp("created_at"),
+});
+
+// ── Jobs ──
+export const jobs = sqliteTable("jobs", {
+  id: id(),
+  type: text("type").notNull(),
+  module: text("module").notNull(),
+  status: text("status", { enum: ["pending", "running", "completed", "failed", "cancelled"] }).notNull().default("pending"),
+  input: text("input", { mode: "json" }),
+  output: text("output", { mode: "json" }),
+  priority: integer("priority").notNull().default(2),
+  scheduledFor: text("scheduled_for"),
+  recurring: text("recurring"),
+  attempts: integer("attempts").notNull().default(0),
+  maxAttempts: integer("max_attempts").notNull().default(3),
+  error: text("error"),
+  createdAt: timestamp("created_at"),
+  startedAt: text("started_at"),
+  completedAt: text("completed_at"),
+});
+
+// ── Settings (with type column per CTO review) ──
+export const settings = sqliteTable("settings", {
+  key: text("key").primaryKey(),
+  value: text("value"),
+  type: text("type", { enum: ["string", "number", "boolean", "json"] }).notNull().default("string"),
+  module: text("module"),
+  updatedAt: timestamp("updated_at"),
+});
