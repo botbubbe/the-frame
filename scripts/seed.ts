@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import bcrypt from "bcryptjs";
 import path from "path";
 
 const DB_PATH = path.join(process.cwd(), "data", "the-frame.db");
@@ -9,14 +10,18 @@ db.pragma("foreign_keys = ON");
 
 const now = new Date().toISOString();
 
-// Seed admin user (Daniel)
+// Hash password for Daniel (default dev password)
+const passwordHash = bcrypt.hashSync("jaxy2026!", 10);
+
+// Seed admin user (Daniel) with password
 db.prepare(`
-  INSERT OR IGNORE INTO users (id, email, name, role, is_active, created_at, updated_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?)
+  INSERT OR REPLACE INTO users (id, email, name, password_hash, role, is_active, created_at, updated_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `).run(
   "582f8be0-cad3-47f2-8c3e-bc12b5a69c72",
   "daniel@getjaxy.com",
   "Daniel Seeff",
+  passwordHash,
   "owner",
   1,
   now,
@@ -51,5 +56,5 @@ db.prepare(`
   now
 );
 
-console.log("✅ Seed complete: 3 users created");
+console.log("✅ Seed complete: 3 users created (Daniel with password)");
 db.close();
