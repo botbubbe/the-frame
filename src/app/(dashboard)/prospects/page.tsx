@@ -3,6 +3,7 @@
 import { Suspense, useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { ListFilter, Bookmark, Plus, X, ChevronRight } from "lucide-react";
 
 interface Prospect {
   id: string;
@@ -26,6 +27,15 @@ interface FilterOptions {
   sources: { source: string; count: number }[];
   categories: { category: string; count: number }[];
   icpRange: { min: number; max: number };
+}
+
+interface SmartList {
+  id: string;
+  name: string;
+  description: string | null;
+  filters: Record<string, unknown>;
+  isDefault: boolean;
+  resultCount: number;
 }
 
 interface ApiResponse {
@@ -54,8 +64,13 @@ function ProspectsPage() {
   const [loading, setLoading] = useState(true);
   const [filterOptions, setFilterOptions] = useState<FilterOptions | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [smartLists, setSmartLists] = useState<SmartList[]>([]);
+  const [showSmartLists, setShowSmartLists] = useState(false);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [saveListName, setSaveListName] = useState("");
+  const [saveListDesc, setSaveListDesc] = useState("");
+  const [activeSmartList, setActiveSmartList] = useState<string | null>(null);
 
-  // Current params
   const page = parseInt(searchParams.get("page") || "1");
   const limit = 25;
   const search = searchParams.get("search") || "";
@@ -70,47 +85,44 @@ function ProspectsPage() {
   const icpMin = searchParams.get("icp_min");
   const icpMax = searchParams.get("icp_max");
 
-  // Selection state
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
   const [selectAllMatching, setSelectAllMatching] = useState(false);
   const [bulkLoading, setBulkLoading] = useState(false);
-
-  // Search debounce
   const [searchInput, setSearchInput] = useState(search);
 
-  // Active filter count
   const activeFilterCount = stateFilter.length + categoryFilter.length + sourceFilter.length + statusFilter.length 
     + (hasEmail ? 1 : 0) + (hasPhone ? 1 : 0) + (icpMin ? 1 : 0) + (icpMax ? 1 : 0);
 
   const buildUrl = useCallback((overrides: Record<string, string | string[] | null>) => {
     const p = new URLSearchParams();
     const vals: Record<string, string | string[] | null> = {
-      page: String(page),
-      search,
-      sort,
-      order,
-      state: stateFilter,
-      category: categoryFilter,
-      source: sourceFilter,
-      status: statusFilter,
-      has_email: hasEmail,
-      has_phone: hasPhone,
-      icp_min: icpMin,
-      icp_max: icpMax,
+      page: String(page), search, sort, order,
+      state: stateFilter, category: categoryFilter, source: sourceFilter, status: statusFilter,
+      has_email: hasEmail, has_phone: hasPhone, icp_min: icpMin, icp_max: icpMax,
       ...overrides,
     };
-
     for (const [k, v] of Object.entries(vals)) {
       if (v === null || v === "" || (Array.isArray(v) && v.length === 0)) continue;
-      if (Array.isArray(v)) {
-        v.forEach(val => p.append(k, val));
-      } else {
-        p.set(k, v);
-      }
+      if (Array.isArray(v)) v.forEach(val => p.append(k, val));
+      else p.set(k, v);
     }
     return `/prospects?${p.toString()}`;
   }, [page, search, sort, order, stateFilter, categoryFilter, sourceFilter, statusFilter, hasEmail, hasPhone, icpMin, icpMax]);
+
+  // Current filter state as object (for saving smart lists)
+  const currentFilters = useCallback(() => {
+    const f: Record<string, unknown> = {};
+    if (stateFilter.length) f.state = stateFilter;
+    if (categoryFilter.length) f.category = categoryFilter;
+    if (sourceFilter.length) f.source = sourceFilter;
+    if (statusFilter.length) f.status = statusFilter;
+    if (hasEmail) f.has_email = hasEmail;
+    if (hasPhone) f.has_phone = hasPhone;
+    if (icpMin) f.icp_min = icpMin;
+    if (icpMax) f.icp_max = icpMax;
+    return f;
+  }, [stateFilter, categoryFilter, sourceFilter, statusFilter, hasEmail, hasPhone, icpMin, icpMax]);
 
   // Fetch data
   useEffect(() => {
@@ -118,106 +130,104 @@ function ProspectsPage() {
     const apiParams = new URLSearchParams(searchParams.toString());
     apiParams.set("limit", String(limit));
     if (!apiParams.has("page")) apiParams.set("page", "1");
-
     fetch(`/api/v1/sales/prospects?${apiParams.toString()}`)
       .then(r => r.json())
       .then((data: ApiResponse) => {
-        setProspects(data.data);
-        setTotal(data.total);
-        setTotalPages(data.totalPages);
-        setLoading(false);
+        setProspects(data.data); setTotal(data.total); setTotalPages(data.totalPages); setLoading(false);
       })
       .catch(() => setLoading(false));
   }, [searchParams]);
 
-  // Fetch filter options once
+  // Fetch filter options + smart lists
   useEffect(() => {
-    fetch("/api/v1/sales/prospects/filters")
-      .then(r => r.json())
-      .then(setFilterOptions);
+    fetch("/api/v1/sales/prospects/filters").then(r => r.json()).then(setFilterOptions);
+    fetch("/api/v1/sales/smart-lists").then(r => r.json()).then(d => setSmartLists(d.data || []));
   }, []);
 
   // Search debounce
   useEffect(() => {
     const t = setTimeout(() => {
-      if (searchInput !== search) {
-        router.push(buildUrl({ search: searchInput, page: "1" }));
-      }
+      if (searchInput !== search) router.push(buildUrl({ search: searchInput, page: "1" }));
     }, 300);
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  // Toggle sort
   const toggleSort = (col: string) => {
     const newOrder = sort === col && order === "asc" ? "desc" : "asc";
     router.push(buildUrl({ sort: col, order: newOrder, page: "1" }));
   };
+  const sortIcon = (col: string) => sort !== col ? "↕" : order === "asc" ? "↑" : "↓";
 
-  const sortIcon = (col: string) => {
-    if (sort !== col) return "↕";
-    return order === "asc" ? "↑" : "↓";
-  };
-
-  // Selection
   const toggleSelect = (id: string) => {
     const next = new Set(selected);
     if (next.has(id)) next.delete(id); else next.add(id);
-    setSelected(next);
-    setSelectAll(false);
-    setSelectAllMatching(false);
+    setSelected(next); setSelectAll(false); setSelectAllMatching(false);
   };
-
   const toggleSelectPage = () => {
-    if (selectAll) {
-      setSelected(new Set());
-      setSelectAll(false);
-    } else {
-      setSelected(new Set(prospects.map(p => p.id)));
-      setSelectAll(true);
-    }
+    if (selectAll) { setSelected(new Set()); setSelectAll(false); }
+    else { setSelected(new Set(prospects.map(p => p.id))); setSelectAll(true); }
     setSelectAllMatching(false);
   };
 
-  // Bulk action
   const doBulkAction = async (action: string, params?: Record<string, unknown>) => {
     if (selected.size === 0 && !selectAllMatching) return;
     setBulkLoading(true);
-
-    // If selectAllMatching, we'd need all IDs — for now use selected
-    const ids = Array.from(selected);
-    
     try {
       const res = await fetch("/api/v1/sales/prospects/bulk", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, ids, params }),
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ids: Array.from(selected), params }),
       });
       const result = await res.json();
       if (result.success) {
-        setSelected(new Set());
-        setSelectAll(false);
-        // Refresh
-        router.refresh();
-        // Re-fetch
+        setSelected(new Set()); setSelectAll(false);
         const apiParams = new URLSearchParams(searchParams.toString());
         apiParams.set("limit", String(limit));
         const data: ApiResponse = await (await fetch(`/api/v1/sales/prospects?${apiParams}`)).json();
-        setProspects(data.data);
-        setTotal(data.total);
+        setProspects(data.data); setTotal(data.total);
       }
-    } finally {
-      setBulkLoading(false);
-    }
+    } finally { setBulkLoading(false); }
   };
 
-  // Filter toggle helpers
   const toggleFilterValue = (key: string, value: string, current: string[]) => {
     const next = current.includes(value) ? current.filter(v => v !== value) : [...current, value];
     router.push(buildUrl({ [key]: next, page: "1" }));
+    setActiveSmartList(null);
   };
-
   const clearAllFilters = () => {
     router.push(buildUrl({ state: null, category: null, source: null, status: null, has_email: null, has_phone: null, icp_min: null, icp_max: null, page: "1" }));
+    setActiveSmartList(null);
+  };
+
+  // Apply smart list
+  const applySmartList = (list: SmartList) => {
+    const f = list.filters;
+    router.push(buildUrl({
+      state: (f.state as string[]) || null,
+      category: (f.category as string[]) || null,
+      source: (f.source as string[]) || null,
+      status: (f.status as string[]) || null,
+      has_email: (f.has_email as string) || null,
+      has_phone: (f.has_phone as string) || null,
+      icp_min: (f.icp_min as string) || null,
+      icp_max: (f.icp_max as string) || null,
+      page: "1",
+    }));
+    setActiveSmartList(list.id);
+    setShowSmartLists(false);
+  };
+
+  // Save current filters as smart list
+  const saveAsSmartList = async () => {
+    if (!saveListName.trim()) return;
+    const res = await fetch("/api/v1/sales/smart-lists", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: saveListName, description: saveListDesc, filters: currentFilters() }),
+    });
+    if (res.ok) {
+      const d = await res.json();
+      setSmartLists(prev => [...prev, d.data]);
+      setShowSaveDialog(false); setSaveListName(""); setSaveListDesc("");
+    }
   };
 
   return (
@@ -228,45 +238,114 @@ function ProspectsPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Prospects</h1>
           <p className="text-sm text-gray-500 mt-1">
             {total.toLocaleString()} companies{activeFilterCount > 0 ? " (filtered)" : ""}
+            {activeSmartList && smartLists.find(l => l.id === activeSmartList) && (
+              <span className="ml-2 text-blue-600">
+                — {smartLists.find(l => l.id === activeSmartList)!.name}
+              </span>
+            )}
           </p>
         </div>
       </div>
 
-      {/* Search + Filter bar */}
+      {/* Search + Filter + Smart Lists bar */}
       <div className="flex gap-3 mb-4">
         <div className="flex-1 relative">
-          <input
-            type="text"
-            placeholder="Search prospects..."
-            value={searchInput}
+          <input type="text" placeholder="Search prospects..." value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
-            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white"
-          />
+            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white" />
           {search && (
             <button onClick={() => { setSearchInput(""); router.push(buildUrl({ search: null, page: "1" })); }}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">✕</button>
           )}
         </div>
-        <button
-          onClick={() => setShowFilters(!showFilters)}
+
+        {/* Smart Lists dropdown */}
+        <div className="relative">
+          <button onClick={() => setShowSmartLists(!showSmartLists)}
+            className={`px-4 py-2.5 border rounded-lg text-sm font-medium flex items-center gap-2 ${
+              activeSmartList ? "bg-purple-50 border-purple-300 text-purple-700" : "border-gray-300 text-gray-700 hover:bg-gray-50"
+            } dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300`}>
+            <Bookmark className="w-4 h-4" />
+            <span>Smart Lists</span>
+          </button>
+          {showSmartLists && (
+            <div className="absolute right-0 top-full mt-1 w-80 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50">
+              <div className="p-3 border-b border-gray-100 dark:border-gray-700">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Saved Lists</h3>
+              </div>
+              <div className="max-h-64 overflow-y-auto">
+                {smartLists.map(list => (
+                  <button key={list.id} onClick={() => applySmartList(list)}
+                    className={`w-full text-left px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center justify-between ${
+                      activeSmartList === list.id ? "bg-purple-50 dark:bg-purple-900/20" : ""
+                    }`}>
+                    <div>
+                      <div className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-1.5">
+                        {list.name}
+                        {list.isDefault && <span className="text-[10px] bg-gray-100 dark:bg-gray-700 text-gray-500 px-1 rounded">DEFAULT</span>}
+                      </div>
+                      {list.description && <p className="text-xs text-gray-500 mt-0.5">{list.description}</p>}
+                    </div>
+                    <span className="text-xs text-gray-400 ml-2 shrink-0">{list.resultCount.toLocaleString()}</span>
+                  </button>
+                ))}
+              </div>
+              {activeSmartList && (
+                <div className="p-2 border-t border-gray-100 dark:border-gray-700">
+                  <button onClick={() => { clearAllFilters(); setShowSmartLists(false); }}
+                    className="w-full text-sm text-red-600 hover:text-red-800 py-1">Clear Smart List</button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <button onClick={() => setShowFilters(!showFilters)}
           className={`px-4 py-2.5 border rounded-lg text-sm font-medium flex items-center gap-2 ${
             activeFilterCount > 0 ? "bg-blue-50 border-blue-300 text-blue-700" : "border-gray-300 text-gray-700 hover:bg-gray-50"
-          } dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300`}
-        >
+          } dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300`}>
+          <ListFilter className="w-4 h-4" />
           <span>Filters</span>
           {activeFilterCount > 0 && (
             <span className="bg-blue-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">{activeFilterCount}</span>
           )}
         </button>
+
+        {/* Save as Smart List button */}
+        {activeFilterCount > 0 && !activeSmartList && (
+          <button onClick={() => setShowSaveDialog(true)}
+            className="px-3 py-2.5 border border-dashed border-purple-300 rounded-lg text-sm text-purple-600 hover:bg-purple-50 flex items-center gap-1.5">
+            <Plus className="w-4 h-4" /> Save List
+          </button>
+        )}
+
         {activeFilterCount > 0 && (
           <button onClick={clearAllFilters} className="px-3 py-2.5 text-sm text-red-600 hover:text-red-800">Clear all</button>
         )}
       </div>
 
+      {/* Save Smart List Dialog */}
+      {showSaveDialog && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 w-[420px]">
+            <h3 className="text-lg font-semibold mb-4">Save as Smart List</h3>
+            <input type="text" placeholder="List name" value={saveListName} onChange={e => setSaveListName(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg text-sm mb-3 dark:bg-gray-700 dark:border-gray-600" autoFocus />
+            <textarea placeholder="Description (optional)" value={saveListDesc} onChange={e => setSaveListDesc(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg text-sm mb-3 h-20 dark:bg-gray-700 dark:border-gray-600" />
+            <p className="text-xs text-gray-500 mb-4">{activeFilterCount} active filter{activeFilterCount !== 1 ? "s" : ""} will be saved</p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setShowSaveDialog(false)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancel</button>
+              <button onClick={saveAsSmartList} disabled={!saveListName.trim()}
+                className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50">Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Filters panel */}
       {showFilters && filterOptions && (
         <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 mb-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-          {/* State */}
           <div>
             <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">State</h4>
             <div className="max-h-48 overflow-y-auto space-y-1">
@@ -279,8 +358,6 @@ function ProspectsPage() {
               ))}
             </div>
           </div>
-
-          {/* Category */}
           <div>
             <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">Category</h4>
             <div className="max-h-48 overflow-y-auto space-y-1">
@@ -293,8 +370,6 @@ function ProspectsPage() {
               ))}
             </div>
           </div>
-
-          {/* Source */}
           <div>
             <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">Source</h4>
             <div className="max-h-48 overflow-y-auto space-y-1">
@@ -307,8 +382,6 @@ function ProspectsPage() {
               ))}
             </div>
           </div>
-
-          {/* Status + Toggles */}
           <div>
             <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">Status</h4>
             <div className="space-y-1 mb-4">
@@ -320,7 +393,6 @@ function ProspectsPage() {
                 </label>
               ))}
             </div>
-
             <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">Contact Info</h4>
             <div className="space-y-2">
               <label className="flex items-center gap-2 text-sm">
@@ -332,7 +404,6 @@ function ProspectsPage() {
                 <span className="text-gray-700 dark:text-gray-300">Has Phone</span>
               </label>
             </div>
-
             {filterOptions.icpRange && (
               <>
                 <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2 mt-4">ICP Score</h4>
@@ -384,23 +455,15 @@ function ProspectsPage() {
                 <th className="px-4 py-3 w-10">
                   <input type="checkbox" checked={selectAll} onChange={toggleSelectPage} className="rounded" />
                 </th>
-                <th className="px-4 py-3 cursor-pointer hover:text-gray-900" onClick={() => toggleSort("name")}>
-                  Name {sortIcon("name")}
-                </th>
+                <th className="px-4 py-3 cursor-pointer hover:text-gray-900" onClick={() => toggleSort("name")}>Name {sortIcon("name")}</th>
                 <th className="px-4 py-3">City</th>
-                <th className="px-4 py-3 cursor-pointer hover:text-gray-900" onClick={() => toggleSort("state")}>
-                  State {sortIcon("state")}
-                </th>
+                <th className="px-4 py-3 cursor-pointer hover:text-gray-900" onClick={() => toggleSort("state")}>State {sortIcon("state")}</th>
                 <th className="px-4 py-3">Category</th>
                 <th className="px-4 py-3">Source</th>
                 <th className="px-4 py-3">Phone</th>
                 <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3 cursor-pointer hover:text-gray-900" onClick={() => toggleSort("icp_score")}>
-                  ICP {sortIcon("icp_score")}
-                </th>
-                <th className="px-4 py-3 cursor-pointer hover:text-gray-900" onClick={() => toggleSort("status")}>
-                  Status {sortIcon("status")}
-                </th>
+                <th className="px-4 py-3 cursor-pointer hover:text-gray-900" onClick={() => toggleSort("icp_score")}>ICP {sortIcon("icp_score")}</th>
+                <th className="px-4 py-3 cursor-pointer hover:text-gray-900" onClick={() => toggleSort("status")}>Status {sortIcon("status")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -426,8 +489,7 @@ function ProspectsPage() {
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                         p.icp_score >= 80 ? "bg-green-100 text-green-800" :
                         p.icp_score >= 60 ? "bg-yellow-100 text-yellow-800" :
-                        p.icp_score >= 40 ? "bg-orange-100 text-orange-800" :
-                        "bg-gray-100 text-gray-600"
+                        p.icp_score >= 40 ? "bg-orange-100 text-orange-800" : "bg-gray-100 text-gray-600"
                       }`}>{p.icp_score}</span>
                     ) : "—"}
                   </td>
@@ -436,8 +498,7 @@ function ProspectsPage() {
                       p.status === "qualified" ? "bg-green-100 text-green-800" :
                       p.status === "contacted" ? "bg-blue-100 text-blue-800" :
                       p.status === "rejected" ? "bg-red-100 text-red-800" :
-                      p.status === "customer" ? "bg-purple-100 text-purple-800" :
-                      "bg-gray-100 text-gray-600"
+                      p.status === "customer" ? "bg-purple-100 text-purple-800" : "bg-gray-100 text-gray-600"
                     }`}>{p.status}</span>
                   </td>
                 </tr>
@@ -452,12 +513,8 @@ function ProspectsPage() {
             Showing {((page - 1) * limit + 1).toLocaleString()}–{Math.min(page * limit, total).toLocaleString()} of {total.toLocaleString()}
           </p>
           <div className="flex gap-1">
-            <button
-              disabled={page <= 1}
-              onClick={() => router.push(buildUrl({ page: String(page - 1) }))}
-              className="px-3 py-1.5 border rounded text-sm disabled:opacity-50 hover:bg-gray-100 dark:hover:bg-gray-800 dark:border-gray-600"
-            >Prev</button>
-            {/* Page numbers */}
+            <button disabled={page <= 1} onClick={() => router.push(buildUrl({ page: String(page - 1) }))}
+              className="px-3 py-1.5 border rounded text-sm disabled:opacity-50 hover:bg-gray-100 dark:hover:bg-gray-800 dark:border-gray-600">Prev</button>
             {Array.from({ length: Math.min(7, totalPages) }, (_, i) => {
               let pageNum: number;
               if (totalPages <= 7) pageNum = i + 1;
@@ -471,11 +528,8 @@ function ProspectsPage() {
                 </button>
               );
             })}
-            <button
-              disabled={page >= totalPages}
-              onClick={() => router.push(buildUrl({ page: String(page + 1) }))}
-              className="px-3 py-1.5 border rounded text-sm disabled:opacity-50 hover:bg-gray-100 dark:hover:bg-gray-800 dark:border-gray-600"
-            >Next</button>
+            <button disabled={page >= totalPages} onClick={() => router.push(buildUrl({ page: String(page + 1) }))}
+              className="px-3 py-1.5 border rounded text-sm disabled:opacity-50 hover:bg-gray-100 dark:hover:bg-gray-800 dark:border-gray-600">Next</button>
           </div>
         </div>
       </div>

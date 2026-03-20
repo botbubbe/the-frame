@@ -87,3 +87,17 @@ export const contacts = sqliteTable("contacts", {
   index("idx_contacts_store").on(table.storeId),
   index("idx_contacts_email").on(table.email),
 ]);
+
+// ── Smart Lists (Saved Filters) ──
+export const smartLists = sqliteTable("smart_lists", {
+  id: id(),
+  name: text("name").notNull(),
+  description: text("description"),
+  filters: text("filters", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+  ownerId: text("owner_id").references(() => users.id),
+  isShared: integer("is_shared", { mode: "boolean" }).notNull().default(true),
+  isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+  resultCount: integer("result_count").default(0),
+  createdAt: timestamp("created_at"),
+  updatedAt: timestamp("updated_at"),
+});

@@ -107,6 +107,22 @@ export const jobs = sqliteTable("jobs", {
   completedAt: text("completed_at"),
 });
 
+// ── Agent Runs ──
+export const agentRuns = sqliteTable("agent_runs", {
+  id: id(),
+  agentName: text("agent_name").notNull(),
+  module: text("module").notNull(),
+  status: text("status", { enum: ["pending", "running", "completed", "failed"] }).notNull().default("pending"),
+  input: text("input", { mode: "json" }),
+  output: text("output", { mode: "json" }),
+  tokensUsed: integer("tokens_used"),
+  cost: integer("cost"), // in cents
+  durationMs: integer("duration_ms"),
+  error: text("error"),
+  createdAt: timestamp("created_at"),
+  completedAt: text("completed_at"),
+});
+
 // ── Settings (with type column per CTO review) ──
 export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
