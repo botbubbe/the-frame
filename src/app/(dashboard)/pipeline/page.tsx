@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { sqlite } from "@/lib/db";
 import { PipelineBoard } from "@/modules/sales/components/pipeline-board";
 import { DEAL_STAGES, DEAL_STAGE_LABELS } from "@/modules/sales/schema/pipeline";

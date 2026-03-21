@@ -2,11 +2,11 @@
  * Marketing Module MCP Tools
  */
 import { sqlite } from "@/lib/db";
-import type { MCPTool } from "@/modules/core/mcp/server";
+import type { McpTool } from "@/modules/core/mcp/server";
 import { generateContentIdeas } from "../agents/content-idea-generator";
 import { analyzeContent } from "../agents/seo-optimizer";
 
-export const marketingMcpTools: MCPTool[] = [
+export const marketingMcpTools: McpTool[] = [
   {
     name: "marketing.list_content",
     description: "List content calendar items with optional filters",
@@ -25,7 +25,7 @@ export const marketingMcpTools: MCPTool[] = [
       if (input.platform) { conditions.push("platform = ?"); params.push(input.platform); }
       const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
       const limit = (input.limit as number) || 25;
-      const rows = sqlite().prepare(`SELECT * FROM content_calendar ${where} ORDER BY scheduled_date DESC LIMIT ?`).all(...params, limit);
+      const rows = sqlite.prepare(`SELECT * FROM content_calendar ${where} ORDER BY scheduled_date DESC LIMIT ?`).all(...params, limit);
       return { content: [{ type: "text", text: JSON.stringify(rows, null, 2) }] };
     },
   },
@@ -45,7 +45,7 @@ export const marketingMcpTools: MCPTool[] = [
     },
     handler: async (input: Record<string, unknown>) => {
       const id = crypto.randomUUID();
-      sqlite().prepare(
+      sqlite.prepare(
         "INSERT INTO content_calendar (id, title, type, platform, status, scheduled_date, content, created_at) VALUES (?, ?, ?, ?, 'idea', ?, ?, datetime('now'))"
       ).run(id, input.title, input.type, input.platform, input.scheduled_date || null, input.content || null);
       return { content: [{ type: "text", text: `Created content item ${id}: ${input.title}` }] };
@@ -56,7 +56,7 @@ export const marketingMcpTools: MCPTool[] = [
     description: "Get current SEO keyword rankings",
     inputSchema: { type: "object", properties: {} },
     handler: async () => {
-      const rows = sqlite().prepare("SELECT * FROM seo_rankings ORDER BY current_rank ASC LIMIT 50").all();
+      const rows = sqlite.prepare("SELECT * FROM seo_rankings ORDER BY current_rank ASC LIMIT 50").all();
       return { content: [{ type: "text", text: JSON.stringify(rows, null, 2) }] };
     },
   },
@@ -70,7 +70,7 @@ export const marketingMcpTools: MCPTool[] = [
     handler: async (input: Record<string, unknown>) => {
       const where = input.status ? "WHERE status = ?" : "";
       const params = input.status ? [input.status] : [];
-      const rows = sqlite().prepare(`SELECT * FROM influencers ${where} ORDER BY followers DESC`).all(...params);
+      const rows = sqlite.prepare(`SELECT * FROM influencers ${where} ORDER BY followers DESC`).all(...params);
       return { content: [{ type: "text", text: JSON.stringify(rows, null, 2) }] };
     },
   },
@@ -79,7 +79,7 @@ export const marketingMcpTools: MCPTool[] = [
     description: "Get ad campaign performance stats",
     inputSchema: { type: "object", properties: {} },
     handler: async () => {
-      const rows = sqlite().prepare("SELECT * FROM ad_campaigns ORDER BY start_date DESC").all();
+      const rows = sqlite.prepare("SELECT * FROM ad_campaigns ORDER BY start_date DESC").all();
       const totalSpend = rows.reduce((sum: number, r: Record<string, unknown>) => sum + ((r.spend as number) || 0), 0);
       const totalRevenue = rows.reduce((sum: number, r: Record<string, unknown>) => sum + ((r.revenue as number) || 0), 0);
       return {

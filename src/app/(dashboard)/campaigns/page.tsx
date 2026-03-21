@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 /**
  * F3-004: Campaign List & Dashboard
  */

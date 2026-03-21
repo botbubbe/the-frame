@@ -59,7 +59,7 @@ mcpRegistry.register(
       JOIN companies c ON c.id = ca.company_id ${where}
     `).get(...params) as { count: number };
 
-    return { accounts: rows, total: total.count, page, limit };
+    return { content: [{ type: "text" as const, text: JSON.stringify({ accounts: rows, total: total.count, page, limit }) }] };
   }
 );
 
@@ -72,7 +72,7 @@ mcpRegistry.register(
     company_id: z.string().optional().describe("Company ID"),
   }),
   async (args) => {
-    if (!args.account_id && !args.company_id) return { error: "Provide account_id or company_id" };
+    if (!args.account_id && !args.company_id) return { content: [{ type: "text" as const, text: JSON.stringify({ error: "Provide account_id or company_id" }) }] };
 
     const where = args.account_id ? "ca.id = ?" : "ca.company_id = ?";
     const param = args.account_id ?? args.company_id;
@@ -84,7 +84,7 @@ mcpRegistry.register(
       WHERE ${where}
     `).get(param);
 
-    if (!account) return { error: "Account not found" };
+    if (!account) return { content: [{ type: "text" as const, text: JSON.stringify({ error: "Account not found" }) }] };
 
     // Recent orders
     const recentOrders = sqlite.prepare(`
@@ -101,7 +101,7 @@ mcpRegistry.register(
       ORDER BY calculated_at DESC LIMIT 10
     `).all((account as { id: string }).id);
 
-    return { account, recentOrders, healthHistory };
+    return { content: [{ type: "text" as const, text: JSON.stringify({ account, recentOrders, healthHistory }) }] };
   }
 );
 
@@ -115,9 +115,9 @@ mcpRegistry.register(
   async (args) => {
     if (args.recalculate) {
       const result = recalculateAllHealthScores();
-      return { recalculated: result.updated, summary: getHealthSummary() };
+      return { content: [{ type: "text" as const, text: JSON.stringify({ recalculated: result.updated, summary: getHealthSummary() }) }] };
     }
-    return getHealthSummary();
+    return { content: [{ type: "text" as const, text: JSON.stringify(getHealthSummary()) }] };
   }
 );
 
@@ -132,11 +132,11 @@ mcpRegistry.register(
   async (args) => {
     if (args.account_id) {
       const prediction = predictReorder(args.account_id);
-      if (!prediction) return { error: "Account not found" };
-      return prediction;
+      if (!prediction) return { content: [{ type: "text" as const, text: JSON.stringify({ error: "Account not found" }) }] };
+      return { content: [{ type: "text" as const, text: JSON.stringify(prediction) }] };
     }
     const predictions = getAllReorderPredictions(args.status as "14_day" | "7_day" | "overdue" | undefined);
-    return {
+    return { content: [{ type: "text" as const, text: JSON.stringify({
       predictions,
       total: predictions.length,
       summary: {
@@ -144,7 +144,7 @@ mcpRegistry.register(
         seven_day: predictions.filter(p => p.reminderStatus === "7_day").length,
         fourteen_day: predictions.filter(p => p.reminderStatus === "14_day").length,
       },
-    };
+    }) }] };
   }
 );
 
@@ -158,7 +158,7 @@ mcpRegistry.register(
   }),
   async (args) => {
     const account = db.select().from(customerAccounts).where(eq(customerAccounts.id, args.account_id)).get();
-    if (!account) return { error: "Account not found" };
+    if (!account) return { content: [{ type: "text" as const, text: JSON.stringify({ error: "Account not found" }) }] };
 
     const newTier = args.tier === "auto"
       ? calculateTier(account.totalOrders, account.lifetimeValue)
@@ -169,6 +169,6 @@ mcpRegistry.register(
       .where(eq(customerAccounts.id, args.account_id))
       .run();
 
-    return { accountId: args.account_id, previousTier: account.tier, newTier, auto: args.tier === "auto" };
+    return { content: [{ type: "text" as const, text: JSON.stringify({ accountId: args.account_id, previousTier: account.tier, newTier, auto: args.tier === "auto" }) }] };
   }
 );

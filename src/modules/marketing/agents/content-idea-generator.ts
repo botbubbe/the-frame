@@ -34,7 +34,7 @@ export async function generateContentIdeas(): Promise<ContentIdea[]> {
 
   // Product-based ideas
   try {
-    const newProducts = sqlite().prepare(
+    const newProducts = sqlite.prepare(
       "SELECT name FROM products WHERE status = 'approved' AND created_at >= datetime('now', '-30 days') LIMIT 5"
     ).all() as { name: string }[];
     for (const p of newProducts) {

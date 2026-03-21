@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { sqlite } from "@/lib/db";
 import { CustomerList } from "@/modules/customers/components/customer-list";
 

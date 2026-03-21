@@ -1,12 +1,12 @@
 /**
  * Intelligence Module MCP Tools
  */
-import type { MCPTool } from "@/modules/core/mcp/server";
+import type { McpTool } from "@/modules/core/mcp/server";
 import { detectTrends } from "../agents/trend-detector";
 import { calculateBusinessHealth } from "../lib/business-health";
 import { generateWeeklyReport } from "../agents/report-generator";
 
-export const intelligenceMcpTools: MCPTool[] = [
+export const intelligenceMcpTools: McpTool[] = [
   {
     name: "intelligence.get_sell_through",
     description: "Get sell-through velocity data for all SKUs",
