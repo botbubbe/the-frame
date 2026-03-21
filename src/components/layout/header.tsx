@@ -19,12 +19,17 @@ const moduleTitles: Record<string, string> = {
   prospects: "Prospects",
   pipeline: "Pipeline",
   campaigns: "Campaigns",
+  customers: "Customers",
   orders: "Orders",
   catalog: "Catalog",
   inventory: "Inventory",
   finance: "Finance",
+  marketing: "Marketing",
+  intelligence: "Intelligence",
   ai: "AI Center",
+  notifications: "Notifications",
   settings: "Settings",
+  profile: "Profile",
 };
 
 export function AppHeader() {

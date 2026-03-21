@@ -3,6 +3,7 @@ import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/sidebar";
 import { AppHeader } from "@/components/layout/header";
 import { ChatPanel } from "@/components/chat/chat-panel";
+import { CommandPalette } from "@/components/command-palette";
 import { Providers } from "@/components/providers";
 
 export default function DashboardLayout({
@@ -19,6 +20,7 @@ export default function DashboardLayout({
           <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
         </SidebarInset>
         <ChatPanel />
+        <CommandPalette />
       </SidebarProvider>
     </Providers>
   );

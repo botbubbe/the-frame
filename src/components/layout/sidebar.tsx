@@ -15,6 +15,11 @@ import {
   Settings,
   LogOut,
   ChevronsUpDown,
+  HeartHandshake,
+  Megaphone,
+  BarChart3,
+  Bell,
+  User,
 } from "lucide-react";
 import {
   Sidebar,
@@ -40,16 +45,26 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { signOut, useSession } from "next-auth/react";
 
-const mainNav: Array<{ title: string; href: string; icon: typeof LayoutDashboard; badge?: string }> = [
+const salesNav: Array<{ title: string; href: string; icon: typeof LayoutDashboard; badge?: string }> = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { title: "Prospects", href: "/prospects", icon: Users },
   { title: "Pipeline", href: "/pipeline", icon: Kanban },
   { title: "Campaigns", href: "/campaigns", icon: Mail },
+  { title: "Customers", href: "/customers", icon: HeartHandshake },
+];
+
+const operationsNav: Array<{ title: string; href: string; icon: typeof LayoutDashboard; badge?: string }> = [
   { title: "Orders", href: "/orders", icon: ShoppingCart },
   { title: "Catalog", href: "/catalog", icon: Package },
   { title: "Inventory", href: "/inventory", icon: Warehouse },
   { title: "Finance", href: "/finance", icon: DollarSign },
+];
+
+const insightsNav: Array<{ title: string; href: string; icon: typeof LayoutDashboard; badge?: string }> = [
+  { title: "Marketing", href: "/marketing", icon: Megaphone },
+  { title: "Intelligence", href: "/intelligence", icon: BarChart3 },
   { title: "AI Center", href: "/ai", icon: Brain },
+  { title: "Notifications", href: "/notifications", icon: Bell },
 ];
 
 const bottomNav = [
@@ -91,14 +106,14 @@ export function AppSidebar() {
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Modules</SidebarGroupLabel>
+          <SidebarGroupLabel>Sales</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {mainNav.map((item) => (
+              {salesNav.map((item) => (
                 <SidebarMenuItem key={item.href}>
                   <SidebarMenuButton
                     render={<Link href={item.href} />}
-                    isActive={pathname.startsWith(item.href)}
+                    isActive={pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href))}
                     tooltip={item.title}
                   >
                     <item.icon />
@@ -111,6 +126,46 @@ export function AppSidebar() {
                       </Badge>
                     </SidebarMenuBadge>
                   )}
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Operations</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {operationsNav.map((item) => (
+                <SidebarMenuItem key={item.href}>
+                  <SidebarMenuButton
+                    render={<Link href={item.href} />}
+                    isActive={pathname.startsWith(item.href)}
+                    tooltip={item.title}
+                  >
+                    <item.icon />
+                    <span>{item.title}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Insights</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {insightsNav.map((item) => (
+                <SidebarMenuItem key={item.href}>
+                  <SidebarMenuButton
+                    render={<Link href={item.href} />}
+                    isActive={pathname.startsWith(item.href)}
+                    tooltip={item.title}
+                  >
+                    <item.icon />
+                    <span>{item.title}</span>
+                  </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
@@ -165,6 +220,10 @@ export function AppSidebar() {
                 align="end"
                 sideOffset={4}
               >
+                <DropdownMenuItem onClick={() => window.location.href = "/profile"}>
+                  <User className="mr-2 h-4 w-4" />
+                  Profile
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => window.location.href = "/settings"}>
                   <Settings className="mr-2 h-4 w-4" />
                   Settings
