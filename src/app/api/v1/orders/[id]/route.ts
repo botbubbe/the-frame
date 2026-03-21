@@ -4,6 +4,7 @@ import { orders, orderItems, returns } from "@/modules/orders/schema";
 import { companies, contacts } from "@/modules/sales/schema";
 import { activityFeed } from "@/modules/core/schema";
 import { eq, desc } from "drizzle-orm";
+import { updateOrderStatus } from "@/modules/orders/lib/fulfillment";
 
 // GET /api/v1/orders/:id — order detail
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -39,22 +40,33 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   });
 }
 
-// PATCH /api/v1/orders/:id — update order
+// PATCH /api/v1/orders/:id — update order (uses fulfillment pipeline)
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const body = await req.json();
-  const order = db.select().from(orders).where(eq(orders.id, id)).get();
-  if (!order) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const updates: Record<string, unknown> = { updatedAt: new Date().toISOString() };
-  if (body.status) updates.status = body.status;
-  if (body.notes !== undefined) updates.notes = body.notes;
-  if (body.trackingNumber) updates.trackingNumber = body.trackingNumber;
-  if (body.trackingCarrier) updates.trackingCarrier = body.trackingCarrier;
-  if (body.status === "shipped" && !order.shippedAt) updates.shippedAt = new Date().toISOString();
-  if (body.status === "delivered" && !order.deliveredAt) updates.deliveredAt = new Date().toISOString();
+  try {
+    if (body.status) {
+      const updated = updateOrderStatus({
+        orderId: id,
+        newStatus: body.status,
+        trackingNumber: body.trackingNumber,
+        trackingCarrier: body.trackingCarrier,
+        source: "api",
+      });
+      return NextResponse.json(updated);
+    }
 
-  db.update(orders).set(updates).where(eq(orders.id, id)).run();
+    // Non-status updates (notes, etc.)
+    const order = db.select().from(orders).where(eq(orders.id, id)).get();
+    if (!order) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  return NextResponse.json(db.select().from(orders).where(eq(orders.id, id)).get());
+    const updates: Record<string, unknown> = { updatedAt: new Date().toISOString() };
+    if (body.notes !== undefined) updates.notes = body.notes;
+    db.update(orders).set(updates).where(eq(orders.id, id)).run();
+
+    return NextResponse.json(db.select().from(orders).where(eq(orders.id, id)).get());
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 400 });
+  }
 }
