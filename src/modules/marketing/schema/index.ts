@@ -9,7 +9,7 @@ export const contentCalendar = sqliteTable("marketing_content_calendar", {
   id: id(),
   title: text("title").notNull(),
   type: text("type", { enum: ["blog", "social", "email", "ad"] }).notNull(),
-  platform: text("platform", { enum: ["instagram", "tiktok", "facebook", "blog", "email"] }).notNull(),
+  platform: text("platform", { enum: ["instagram", "tiktok", "facebook", "twitter", "linkedin", "blog", "email"] }).notNull(),
   status: text("status", { enum: ["idea", "planned", "draft", "scheduled", "published"] }).notNull().default("idea"),
   scheduledDate: text("scheduled_date"),
   publishedDate: text("published_date"),
