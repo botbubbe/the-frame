@@ -139,8 +139,10 @@ export function calculateCashFlow(): CashFlowSummary {
     expectedOutflows90d: Math.round((monthlyOutflow * 3) * 100) / 100,
     forecast,
     pendingSettlements: pendingSettlements.map(p => ({
-      ...p,
+      id: p.id,
+      channel: p.channel,
       netAmount: p.net_amount,
+      periodEnd: p.period_end,
     })),
     upcomingExpenses,
   };
