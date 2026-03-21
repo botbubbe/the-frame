@@ -17,6 +17,12 @@ export const salesModule: ModuleDefinition = {
     "sales.import_csv",
     "sales.run_icp_classifier",
     "sales.get_smart_lists",
+    "sales.list_campaigns",
+    "sales.create_campaign",
+    "sales.add_leads_to_campaign",
+    "sales.get_campaign_stats",
+    "sales.sync_instantly",
+    "sales.classify_reply",
   ],
   eventHooks: {},
 };

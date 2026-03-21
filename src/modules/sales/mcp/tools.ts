@@ -7,6 +7,8 @@ import { sqlite } from "@/lib/db";
 import { z } from "zod";
 import { agentOrchestrator } from "@/modules/core/lib/agent-orchestrator";
 import { getUnscoredCompanyIds } from "@/modules/sales/agents/icp-classifier";
+import { runInstantlySync } from "@/modules/sales/lib/instantly-sync";
+import { classifyReply } from "@/modules/sales/agents/response-classifier";
 
 // ── sales.list_prospects ──
 mcpRegistry.register(
@@ -434,5 +436,101 @@ mcpRegistry.register(
   async () => {
     const lists = sqlite.prepare("SELECT * FROM smart_lists ORDER BY is_default DESC, name ASC").all();
     return { content: [{ type: "text" as const, text: JSON.stringify(lists, null, 2) }] };
+  }
+);
+
+// ── F3-010: Campaign MCP Tools ──
+
+mcpRegistry.register(
+  "sales.list_campaigns",
+  "List all campaigns with stats. Filter by type (email_sequence/calling/re_engagement/ab_test) or status (draft/active/paused/completed).",
+  z.object({
+    type: z.string().optional().describe("Filter by campaign type"),
+    status: z.string().optional().describe("Filter by campaign status"),
+  }),
+  async (args) => {
+    const clauses: string[] = [];
+    const vals: unknown[] = [];
+    if (args.type) { clauses.push("type = ?"); vals.push(args.type); }
+    if (args.status) { clauses.push("status = ?"); vals.push(args.status); }
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    const rows = sqlite.prepare(`SELECT *, (SELECT count(*) FROM campaign_leads cl WHERE cl.campaign_id = campaigns.id) as lead_count FROM campaigns ${where} ORDER BY created_at DESC`).all(...vals);
+    return { content: [{ type: "text" as const, text: JSON.stringify(rows, null, 2) }] };
+  }
+);
+
+mcpRegistry.register(
+  "sales.create_campaign",
+  "Create a new campaign. Returns the created campaign.",
+  z.object({
+    name: z.string().describe("Campaign name"),
+    type: z.string().optional().describe("email_sequence, calling, re_engagement, or ab_test"),
+    description: z.string().optional(),
+    target_smart_list_id: z.string().optional(),
+    variant_a_subject: z.string().optional(),
+    variant_b_subject: z.string().optional(),
+  }),
+  async (args) => {
+    const id = crypto.randomUUID();
+    sqlite.prepare(`INSERT INTO campaigns (id, name, type, description, target_smart_list_id, variant_a_subject, variant_b_subject) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(id, args.name, args.type || "email_sequence", args.description, args.target_smart_list_id, args.variant_a_subject, args.variant_b_subject);
+    const campaign = sqlite.prepare("SELECT * FROM campaigns WHERE id = ?").get(id);
+    return { content: [{ type: "text" as const, text: JSON.stringify(campaign, null, 2) }] };
+  }
+);
+
+mcpRegistry.register(
+  "sales.add_leads_to_campaign",
+  "Add company leads to a campaign by company IDs.",
+  z.object({
+    campaign_id: z.string().describe("Campaign ID"),
+    company_ids: z.array(z.string()).describe("Array of company IDs to add"),
+  }),
+  async (args) => {
+    let added = 0;
+    const insert = sqlite.prepare(`INSERT INTO campaign_leads (id, campaign_id, company_id, contact_id, email) SELECT ?, ?, c.id, ct.id, ct.email FROM companies c LEFT JOIN contacts ct ON ct.company_id = c.id AND ct.is_primary = 1 WHERE c.id = ?`);
+    for (const companyId of args.company_ids) {
+      try {
+        insert.run(crypto.randomUUID(), args.campaign_id, companyId);
+        added++;
+      } catch { /* skip duplicates */ }
+    }
+    return { content: [{ type: "text" as const, text: JSON.stringify({ added, total: args.company_ids.length }) }] };
+  }
+);
+
+mcpRegistry.register(
+  "sales.get_campaign_stats",
+  "Get detailed stats for a campaign including lead breakdown.",
+  z.object({
+    campaign_id: z.string().describe("Campaign ID"),
+  }),
+  async (args) => {
+    const campaign = sqlite.prepare("SELECT * FROM campaigns WHERE id = ?").get(args.campaign_id);
+    if (!campaign) return { content: [{ type: "text" as const, text: "Campaign not found" }] };
+    const stats = sqlite.prepare(`SELECT status, count(*) as count FROM campaign_leads WHERE campaign_id = ? GROUP BY status`).all(args.campaign_id);
+    return { content: [{ type: "text" as const, text: JSON.stringify({ campaign, lead_stats: stats }, null, 2) }] };
+  }
+);
+
+mcpRegistry.register(
+  "sales.sync_instantly",
+  "Trigger a manual sync between The Frame and Instantly.ai. Pushes new campaigns/leads and pulls analytics.",
+  z.object({}),
+  async () => {
+    const result = await runInstantlySync();
+    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+  }
+);
+
+mcpRegistry.register(
+  "sales.classify_reply",
+  "Classify an email reply text. Returns classification (interested, not_interested, out_of_office, wrong_person, question, auto_reply).",
+  z.object({
+    text: z.string().describe("Email reply text to classify"),
+  }),
+  async (args) => {
+    const result = classifyReply(args.text);
+    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
   }
 );
