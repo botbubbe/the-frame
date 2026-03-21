@@ -58,10 +58,8 @@ export function analyzeMargins(): {
       AVG(oi.unit_price) as avg_unit_price,
       SUM(oi.quantity) as units_sold,
       SUM(oi.total_price) as total_revenue,
-      COALESCE(
-        (SELECT lc.landed_cost_per_unit FROM inventory_landed_costs lc WHERE lc.sku_id = s.id LIMIT 1),
-        0
-      ) as landed_cost
+      -- TODO: Add landed cost lookup when inventory costs are populated
+      0 as landed_cost
     FROM order_items oi
     JOIN orders o ON oi.order_id = o.id
     LEFT JOIN catalog_skus s ON oi.sku_id = s.id

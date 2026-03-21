@@ -90,13 +90,8 @@ export function calculatePnl(
       o.channel,
       COUNT(DISTINCT o.id) as order_count,
       COALESCE(SUM(o.total), 0) as revenue,
-      COALESCE(SUM(
-        CASE WHEN oi.sku_id IS NOT NULL THEN
-          (SELECT COALESCE(lc.landed_cost_per_unit, 0) FROM inventory i 
-           LEFT JOIN inventory_landed_costs lc ON lc.sku_id = i.sku_id
-           WHERE i.sku_id = oi.sku_id LIMIT 1) * oi.quantity
-        ELSE 0 END
-      ), 0) as cogs
+      -- TODO: Add landed cost lookup when inventory_landed_costs table is populated
+      0 as cogs
     FROM orders o
     LEFT JOIN order_items oi ON oi.order_id = o.id
     WHERE o.placed_at >= ? AND o.placed_at <= ?
