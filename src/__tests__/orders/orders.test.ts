@@ -20,7 +20,7 @@ describe("Orders", () => {
   });
 
   it("fulfillment status progression", () => {
-    db.prepare("INSERT INTO orders (id, order_number, status) VALUES ('o1', 'ORD-001', 'pending')").run();
+    db.prepare("INSERT INTO orders (id, order_number, channel, status) VALUES ('o1', 'ORD-001', 'direct', 'pending')").run();
     for (const status of ["confirmed", "picking", "packed", "shipped", "delivered"]) {
       db.prepare("UPDATE orders SET status = ? WHERE id = 'o1'").run(status);
     }
