@@ -10,7 +10,7 @@ export function getTestDb() {
     db.pragma("journal_mode = WAL");
     // Create core tables
     db.exec(`
-      CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, email TEXT UNIQUE, name TEXT, role TEXT DEFAULT 'owner', is_active INTEGER DEFAULT 1, created_at TEXT DEFAULT (datetime('now')));
+      CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, email TEXT UNIQUE, name TEXT, role TEXT DEFAULT 'owner', is_active INTEGER DEFAULT 1, last_login_at TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT);
       CREATE TABLE IF NOT EXISTS error_logs (id TEXT PRIMARY KEY, level TEXT, source TEXT, message TEXT, stack_trace TEXT, request_path TEXT, user_id TEXT, metadata TEXT, created_at TEXT DEFAULT (datetime('now')));
       CREATE TABLE IF NOT EXISTS change_logs (id TEXT PRIMARY KEY, entity_type TEXT, entity_id TEXT, field TEXT, old_value TEXT, new_value TEXT, user_id TEXT, source TEXT, agent_type TEXT, request_id TEXT, timestamp TEXT DEFAULT (datetime('now')), created_at TEXT DEFAULT (datetime('now')));
       CREATE TABLE IF NOT EXISTS reporting_logs (id TEXT PRIMARY KEY, event_type TEXT, module TEXT, user_id TEXT, metadata TEXT, duration_ms INTEGER, created_at TEXT DEFAULT (datetime('now')));
@@ -29,7 +29,7 @@ export function getTestDb() {
       CREATE TABLE IF NOT EXISTS settlement_line_items (id TEXT PRIMARY KEY, settlement_id TEXT, order_id TEXT, type TEXT, description TEXT, amount REAL DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));
       CREATE TABLE IF NOT EXISTS expense_categories (id TEXT PRIMARY KEY, name TEXT NOT NULL, parent_id TEXT, budget_monthly REAL, created_at TEXT DEFAULT (datetime('now')));
       CREATE TABLE IF NOT EXISTS expenses (id TEXT PRIMARY KEY, category_id TEXT, description TEXT NOT NULL, amount REAL NOT NULL, vendor TEXT, date TEXT NOT NULL, recurring INTEGER DEFAULT 0, frequency TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')));
-      CREATE TABLE IF NOT EXISTS customer_accounts (id TEXT PRIMARY KEY, company_id TEXT, tier TEXT DEFAULT 'bronze', lifetime_value REAL DEFAULT 0, total_orders INTEGER DEFAULT 0, health_score REAL DEFAULT 50, health_status TEXT DEFAULT 'healthy', created_at TEXT DEFAULT (datetime('now')));
+      CREATE TABLE IF NOT EXISTS customer_accounts (id TEXT PRIMARY KEY, company_id TEXT UNIQUE, tier TEXT DEFAULT 'bronze', lifetime_value REAL DEFAULT 0, total_orders INTEGER DEFAULT 0, avg_order_value REAL DEFAULT 0, first_order_at TEXT, last_order_at TEXT, next_reorder_estimate TEXT, health_score REAL DEFAULT 50, health_status TEXT DEFAULT 'healthy', payment_terms TEXT, discount_rate REAL DEFAULT 0, notes TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT);
       CREATE TABLE IF NOT EXISTS smart_lists (id TEXT PRIMARY KEY, name TEXT, description TEXT, filters TEXT, owner_id TEXT, is_shared INTEGER DEFAULT 1, is_default INTEGER DEFAULT 0, result_count INTEGER DEFAULT 0, updated_at TEXT, created_at TEXT DEFAULT (datetime('now')));
       CREATE TABLE IF NOT EXISTS campaigns (id TEXT PRIMARY KEY, name TEXT, type TEXT DEFAULT 'email_sequence', status TEXT DEFAULT 'draft', description TEXT, instantly_campaign_id TEXT, target_segment TEXT, target_smart_list_id TEXT, variant_a_subject TEXT, variant_b_subject TEXT, sent INTEGER DEFAULT 0, delivered INTEGER DEFAULT 0, opened INTEGER DEFAULT 0, replied INTEGER DEFAULT 0, bounced INTEGER DEFAULT 0, meetings_booked INTEGER DEFAULT 0, orders_placed INTEGER DEFAULT 0, variant_a_sent INTEGER DEFAULT 0, variant_a_opened INTEGER DEFAULT 0, variant_a_replied INTEGER DEFAULT 0, variant_b_sent INTEGER DEFAULT 0, variant_b_opened INTEGER DEFAULT 0, variant_b_replied INTEGER DEFAULT 0, updated_at TEXT, created_at TEXT DEFAULT (datetime('now')));
       CREATE TABLE IF NOT EXISTS campaign_leads (id TEXT PRIMARY KEY, campaign_id TEXT, company_id TEXT, contact_id TEXT, instantly_lead_id TEXT, email TEXT, status TEXT DEFAULT 'queued', reply_text TEXT, reply_classification TEXT, dismissed INTEGER DEFAULT 0, sent_at TEXT, opened_at TEXT, replied_at TEXT, created_at TEXT DEFAULT (datetime('now')));
@@ -47,6 +47,9 @@ export function getTestDb() {
       -- Catalog tables for inventory joins
       CREATE TABLE IF NOT EXISTS catalog_products (id TEXT PRIMARY KEY, sku_prefix TEXT UNIQUE, name TEXT, description TEXT, category TEXT, frame_shape TEXT, frame_material TEXT, gender TEXT, lens_type TEXT, wholesale_price REAL, retail_price REAL, msrp REAL, factory_name TEXT, factory_sku TEXT, status TEXT DEFAULT 'intake', created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')));
       CREATE TABLE IF NOT EXISTS catalog_skus (id TEXT PRIMARY KEY, product_id TEXT NOT NULL, sku TEXT UNIQUE, color_name TEXT, color_hex TEXT, cost_price REAL, wholesale_price REAL, retail_price REAL, created_at TEXT DEFAULT (datetime('now')));
+      CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT, type TEXT DEFAULT 'string', module TEXT, updated_at TEXT DEFAULT (datetime('now')));
+      CREATE TABLE IF NOT EXISTS agent_runs (id TEXT PRIMARY KEY, agent_name TEXT NOT NULL, module TEXT NOT NULL, status TEXT DEFAULT 'pending', input TEXT, output TEXT, tokens_used INTEGER, cost INTEGER, duration_ms INTEGER, error TEXT, created_at TEXT DEFAULT (datetime('now')), completed_at TEXT);
+      CREATE TABLE IF NOT EXISTS account_health_history (id TEXT PRIMARY KEY, customer_account_id TEXT NOT NULL, score INTEGER NOT NULL, status TEXT NOT NULL, factors TEXT, calculated_at TEXT DEFAULT (datetime('now')));
     `);
     // Seed test user
     db.prepare("INSERT INTO users (id, email, name, role) VALUES ('u1', 'daniel@getjaxy.com', 'Daniel', 'owner')").run();
@@ -59,7 +62,7 @@ export function getTestDrizzle() {
 }
 
 export function resetTestDb() {
-  const tables = ["settlement_line_items", "expense_categories", "companies", "stores", "contacts", "deals", "deal_activities", "orders", "order_items", "settlements", "expenses", "customer_accounts", "smart_lists", "campaigns", "campaign_leads", "inventory", "inventory_factories", "inventory_movements", "inventory_purchase_orders", "inventory_po_line_items", "inventory_qc_inspections", "notifications", "catalog_products", "catalog_skus", "error_logs", "change_logs", "reporting_logs", "activity_feed", "jobs"];
+  const tables = ["settlement_line_items", "expense_categories", "companies", "stores", "contacts", "deals", "deal_activities", "orders", "order_items", "settlements", "expenses", "customer_accounts", "smart_lists", "campaigns", "campaign_leads", "inventory", "inventory_factories", "inventory_movements", "inventory_purchase_orders", "inventory_po_line_items", "inventory_qc_inspections", "notifications", "catalog_products", "catalog_skus", "error_logs", "change_logs", "reporting_logs", "activity_feed", "jobs", "settings", "agent_runs", "account_health_history"];
   const d = getTestDb();
   for (const t of tables) { try { d.exec(`DELETE FROM ${t}`); } catch {} }
   // Clear FTS
