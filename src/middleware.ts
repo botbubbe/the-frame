@@ -20,9 +20,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Check NextAuth token OR our custom session-token cookie
   const token = await getToken({ req: request });
+  const sessionToken = request.cookies.get("session-token")?.value;
 
-  if (!token) {
+  if (!token && !sessionToken) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(loginUrl);
