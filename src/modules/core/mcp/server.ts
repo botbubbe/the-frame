@@ -82,6 +82,9 @@ export const mcpRegistry = new McpToolRegistry();
 import { registerInventoryMcpTools } from "@/modules/inventory/mcp";
 registerInventoryMcpTools();
 
+import { registerFinanceMcpTools } from "@/modules/finance/mcp/tools";
+registerFinanceMcpTools();
+
 // ── Register Phase 0 system tools ──
 
 mcpRegistry.register(
