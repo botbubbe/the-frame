@@ -1,9 +1,9 @@
 "use client";
 
-import { Suspense, useState, useEffect, useCallback } from "react";
+import { Suspense, useState, useEffect, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ListFilter, Bookmark, Plus, X, ChevronRight } from "lucide-react";
+import { ListFilter, Bookmark, Plus, X, ChevronRight, Download, Search, Merge, AlertTriangle, CheckCircle2 } from "lucide-react";
 
 interface Prospect {
   id: string;
@@ -36,6 +36,26 @@ interface SmartList {
   filters: Record<string, unknown>;
   isDefault: boolean;
   resultCount: number;
+}
+
+interface Campaign {
+  id: string;
+  name: string;
+  type: string;
+  status: string;
+}
+
+interface DuplicatePair {
+  id1: string;
+  id2: string;
+  name1: string;
+  name2: string;
+  city1: string;
+  city2: string;
+  state1: string;
+  state2: string;
+  confidence: number;
+  reasons: string[];
 }
 
 interface ApiResponse {
@@ -91,6 +111,24 @@ function ProspectsPage() {
   const [bulkLoading, setBulkLoading] = useState(false);
   const [searchInput, setSearchInput] = useState(search);
 
+  // Bulk action dropdowns
+  const [showTagPicker, setShowTagPicker] = useState(false);
+  const [showCampaignPicker, setShowCampaignPicker] = useState(false);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
+  const [newTag, setNewTag] = useState("");
+  const tagPickerRef = useRef<HTMLDivElement>(null);
+  const campaignPickerRef = useRef<HTMLDivElement>(null);
+
+  // Duplicate detection state
+  const [showDuplicates, setShowDuplicates] = useState(false);
+  const [duplicates, setDuplicates] = useState<DuplicatePair[]>([]);
+  const [dupLoading, setDupLoading] = useState(false);
+  const [mergePair, setMergePair] = useState<DuplicatePair | null>(null);
+  const [mergeLoading, setMergeLoading] = useState(false);
+  const [mergePrimaryId, setMergePrimaryId] = useState<string | null>(null);
+  const [mergeSuccess, setMergeSuccess] = useState<string | null>(null);
+
   const activeFilterCount = stateFilter.length + categoryFilter.length + sourceFilter.length + statusFilter.length 
     + (hasEmail ? 1 : 0) + (hasPhone ? 1 : 0) + (icpMin ? 1 : 0) + (icpMax ? 1 : 0);
 
@@ -110,7 +148,6 @@ function ProspectsPage() {
     return `/prospects?${p.toString()}`;
   }, [page, search, sort, order, stateFilter, categoryFilter, sourceFilter, statusFilter, hasEmail, hasPhone, icpMin, icpMax]);
 
-  // Current filter state as object (for saving smart lists)
   const currentFilters = useCallback(() => {
     const f: Record<string, unknown> = {};
     if (stateFilter.length) f.state = stateFilter;
@@ -138,10 +175,17 @@ function ProspectsPage() {
       .catch(() => setLoading(false));
   }, [searchParams]);
 
-  // Fetch filter options + smart lists
+  // Fetch filter options + smart lists + campaigns
   useEffect(() => {
-    fetch("/api/v1/sales/prospects/filters").then(r => r.json()).then(setFilterOptions);
+    fetch("/api/v1/sales/prospects/filters").then(r => r.json()).then(data => {
+      setFilterOptions(data);
+      // Extract unique tags from categories
+      if (data.categories) {
+        setAvailableTags(data.categories.map((c: { category: string }) => c.category).filter(Boolean));
+      }
+    });
     fetch("/api/v1/sales/smart-lists").then(r => r.json()).then(d => setSmartLists(d.data || []));
+    fetch("/api/v1/sales/campaigns?limit=100").then(r => r.json()).then(d => setCampaigns(d.data || []));
   }, []);
 
   // Search debounce
@@ -151,6 +195,16 @@ function ProspectsPage() {
     }, 300);
     return () => clearTimeout(t);
   }, [searchInput]);
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (tagPickerRef.current && !tagPickerRef.current.contains(e.target as Node)) setShowTagPicker(false);
+      if (campaignPickerRef.current && !campaignPickerRef.current.contains(e.target as Node)) setShowCampaignPicker(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   const toggleSort = (col: string) => {
     const newOrder = sort === col && order === "asc" ? "desc" : "asc";
@@ -169,6 +223,13 @@ function ProspectsPage() {
     setSelectAllMatching(false);
   };
 
+  const refreshProspects = async () => {
+    const apiParams = new URLSearchParams(searchParams.toString());
+    apiParams.set("limit", String(limit));
+    const data: ApiResponse = await (await fetch(`/api/v1/sales/prospects?${apiParams}`)).json();
+    setProspects(data.data); setTotal(data.total); setTotalPages(data.totalPages);
+  };
+
   const doBulkAction = async (action: string, params?: Record<string, unknown>) => {
     if (selected.size === 0 && !selectAllMatching) return;
     setBulkLoading(true);
@@ -179,13 +240,65 @@ function ProspectsPage() {
       });
       const result = await res.json();
       if (result.success) {
-        setSelected(new Set()); setSelectAll(false);
-        const apiParams = new URLSearchParams(searchParams.toString());
-        apiParams.set("limit", String(limit));
-        const data: ApiResponse = await (await fetch(`/api/v1/sales/prospects?${apiParams}`)).json();
-        setProspects(data.data); setTotal(data.total);
+        setSelected(new Set()); setSelectAll(false); setSelectAllMatching(false);
+        await refreshProspects();
       }
     } finally { setBulkLoading(false); }
+  };
+
+  const exportSelectedCSV = () => {
+    const selectedProspects = prospects.filter(p => selected.has(p.id));
+    if (selectedProspects.length === 0) return;
+    
+    const headers = ["Name", "City", "State", "Source", "Phone", "Email", "ICP Score", "Status", "Tags"];
+    const rows = selectedProspects.map(p => [
+      `"${(p.name || "").replace(/"/g, '""')}"`,
+      `"${(p.city || "").replace(/"/g, '""')}"`,
+      `"${(p.state || "").replace(/"/g, '""')}"`,
+      `"${(p.source || "").replace(/"/g, '""')}"`,
+      `"${(p.phone || "").replace(/"/g, '""')}"`,
+      `"${(p.email || "").replace(/"/g, '""')}"`,
+      p.icp_score ?? "",
+      p.status || "",
+      `"${(p.tags || []).join(", ")}"`,
+    ]);
+    
+    const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `prospects-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+
+  // Duplicate detection
+  const findDuplicates = async () => {
+    setDupLoading(true); setShowDuplicates(true); setMergeSuccess(null);
+    try {
+      const res = await fetch("/api/v1/sales/duplicates?limit=50");
+      const data = await res.json();
+      setDuplicates(data.data || []);
+    } finally { setDupLoading(false); }
+  };
+
+  const doMerge = async () => {
+    if (!mergePair || !mergePrimaryId) return;
+    setMergeLoading(true);
+    const secondaryId = mergePrimaryId === mergePair.id1 ? mergePair.id2 : mergePair.id1;
+    try {
+      const res = await fetch("/api/v1/sales/duplicates/merge", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ primaryId: mergePrimaryId, secondaryId }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setDuplicates(prev => prev.filter(d => !(d.id1 === mergePair.id1 && d.id2 === mergePair.id2)));
+        setMergePair(null); setMergePrimaryId(null);
+        setMergeSuccess("Records merged successfully!");
+        await refreshProspects();
+        setTimeout(() => setMergeSuccess(null), 3000);
+      }
+    } finally { setMergeLoading(false); }
   };
 
   const toggleFilterValue = (key: string, value: string, current: string[]) => {
@@ -198,25 +311,18 @@ function ProspectsPage() {
     setActiveSmartList(null);
   };
 
-  // Apply smart list
   const applySmartList = (list: SmartList) => {
     const f = list.filters;
     router.push(buildUrl({
-      state: (f.state as string[]) || null,
-      category: (f.category as string[]) || null,
-      source: (f.source as string[]) || null,
-      status: (f.status as string[]) || null,
-      has_email: (f.has_email as string) || null,
-      has_phone: (f.has_phone as string) || null,
-      icp_min: (f.icp_min as string) || null,
-      icp_max: (f.icp_max as string) || null,
+      state: (f.state as string[]) || null, category: (f.category as string[]) || null,
+      source: (f.source as string[]) || null, status: (f.status as string[]) || null,
+      has_email: (f.has_email as string) || null, has_phone: (f.has_phone as string) || null,
+      icp_min: (f.icp_min as string) || null, icp_max: (f.icp_max as string) || null,
       page: "1",
     }));
-    setActiveSmartList(list.id);
-    setShowSmartLists(false);
+    setActiveSmartList(list.id); setShowSmartLists(false);
   };
 
-  // Save current filters as smart list
   const saveAsSmartList = async () => {
     if (!saveListName.trim()) return;
     const res = await fetch("/api/v1/sales/smart-lists", {
@@ -245,6 +351,11 @@ function ProspectsPage() {
             )}
           </p>
         </div>
+        <button onClick={findDuplicates}
+          className="px-4 py-2.5 border border-amber-300 bg-amber-50 text-amber-700 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-amber-100 dark:bg-amber-900/20 dark:border-amber-700 dark:text-amber-400">
+          <Search className="w-4 h-4" />
+          Find Duplicates
+        </button>
       </div>
 
       {/* Search + Filter + Smart Lists bar */}
@@ -311,7 +422,6 @@ function ProspectsPage() {
           )}
         </button>
 
-        {/* Save as Smart List button */}
         {activeFilterCount > 0 && !activeSmartList && (
           <button onClick={() => setShowSaveDialog(true)}
             className="px-3 py-2.5 border border-dashed border-purple-300 rounded-lg text-sm text-purple-600 hover:bg-purple-50 flex items-center gap-1.5">
@@ -420,29 +530,215 @@ function ProspectsPage() {
         </div>
       )}
 
-      {/* Bulk action bar */}
+      {/* Bulk action bar — floating at bottom when items selected */}
       {selected.size > 0 && (
-        <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg px-4 py-3 mb-4 flex items-center gap-3">
-          <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl px-5 py-3 flex items-center gap-3">
+          <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
             {selectAllMatching ? `All ${total.toLocaleString()} matching` : `${selected.size} selected`}
           </span>
           {selectAll && !selectAllMatching && total > limit && (
             <button onClick={() => setSelectAllMatching(true)} className="text-sm text-blue-600 hover:underline">
-              Select all {total.toLocaleString()} matching
+              Select all {total.toLocaleString()}
             </button>
           )}
-          <div className="flex gap-2 ml-auto">
-            <button onClick={() => doBulkAction("approve")} disabled={bulkLoading}
-              className="px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:opacity-50">Approve</button>
-            <button onClick={() => doBulkAction("reject")} disabled={bulkLoading}
-              className="px-3 py-1.5 bg-red-600 text-white text-sm rounded hover:bg-red-700 disabled:opacity-50">Reject</button>
-            <button onClick={() => { const tag = prompt("Enter tag:"); if (tag) doBulkAction("tag", { tag }); }} disabled={bulkLoading}
-              className="px-3 py-1.5 bg-gray-600 text-white text-sm rounded hover:bg-gray-700 disabled:opacity-50">Tag</button>
-            <button disabled className="px-3 py-1.5 bg-gray-300 text-gray-500 text-sm rounded cursor-not-allowed">Add to Campaign</button>
-            <button disabled className="px-3 py-1.5 bg-gray-300 text-gray-500 text-sm rounded cursor-not-allowed">Enrich</button>
+          <div className="w-px h-6 bg-gray-200 dark:bg-gray-600" />
+          <button onClick={() => doBulkAction("approve")} disabled={bulkLoading}
+            className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50 font-medium">
+            ✓ Approve
+          </button>
+          <button onClick={() => doBulkAction("reject")} disabled={bulkLoading}
+            className="px-3 py-1.5 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 disabled:opacity-50 font-medium">
+            ✕ Reject
+          </button>
+
+          {/* Tag picker dropdown */}
+          <div className="relative" ref={tagPickerRef}>
+            <button onClick={() => { setShowTagPicker(!showTagPicker); setShowCampaignPicker(false); }} disabled={bulkLoading}
+              className="px-3 py-1.5 bg-gray-700 text-white text-sm rounded-lg hover:bg-gray-800 disabled:opacity-50 font-medium">
+              🏷 Add Tag
+            </button>
+            {showTagPicker && (
+              <div className="absolute bottom-full mb-2 left-0 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl">
+                <div className="p-2 border-b border-gray-100 dark:border-gray-700">
+                  <input type="text" placeholder="New tag..." value={newTag} onChange={e => setNewTag(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter" && newTag.trim()) { doBulkAction("tag", { tag: newTag.trim() }); setNewTag(""); setShowTagPicker(false); } }}
+                    className="w-full px-2 py-1.5 border rounded text-sm dark:bg-gray-700 dark:border-gray-600" autoFocus />
+                </div>
+                <div className="max-h-48 overflow-y-auto p-1">
+                  {availableTags.map(tag => (
+                    <button key={tag} onClick={() => { doBulkAction("tag", { tag }); setShowTagPicker(false); }}
+                      className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300">
+                      {tag}
+                    </button>
+                  ))}
+                  {availableTags.length === 0 && !newTag && (
+                    <p className="px-3 py-2 text-xs text-gray-400">Type to create a new tag</p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
+
+          {/* Campaign picker dropdown */}
+          <div className="relative" ref={campaignPickerRef}>
+            <button onClick={() => { setShowCampaignPicker(!showCampaignPicker); setShowTagPicker(false); }} disabled={bulkLoading}
+              className="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-50 font-medium">
+              📧 Add to Campaign
+            </button>
+            {showCampaignPicker && (
+              <div className="absolute bottom-full mb-2 right-0 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl">
+                <div className="p-2 border-b border-gray-100 dark:border-gray-700">
+                  <p className="text-xs font-semibold text-gray-500 uppercase">Select Campaign</p>
+                </div>
+                <div className="max-h-48 overflow-y-auto p-1">
+                  {campaigns.length === 0 ? (
+                    <p className="px-3 py-2 text-xs text-gray-400">No campaigns found</p>
+                  ) : campaigns.map(c => (
+                    <button key={c.id} onClick={() => { doBulkAction("assign", { owner_id: c.id }); setShowCampaignPicker(false); }}
+                      className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                      <div className="text-sm font-medium text-gray-900 dark:text-white">{c.name}</div>
+                      <div className="text-xs text-gray-400">{c.type} · {c.status}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Export CSV */}
+          <button onClick={exportSelectedCSV} disabled={bulkLoading}
+            className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-sm rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 font-medium flex items-center gap-1.5">
+            <Download className="w-3.5 h-3.5" /> Export CSV
+          </button>
+
+          <div className="w-px h-6 bg-gray-200 dark:bg-gray-600" />
           <button onClick={() => { setSelected(new Set()); setSelectAll(false); setSelectAllMatching(false); }}
-            className="text-sm text-gray-500 hover:text-gray-700 ml-2">Cancel</button>
+            className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Duplicates Dialog */}
+      {showDuplicates && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-[800px] max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-amber-500" /> Duplicate Detection
+                </h3>
+                <p className="text-sm text-gray-500 mt-0.5">{duplicates.length} potential duplicate pairs found</p>
+              </div>
+              <button onClick={() => { setShowDuplicates(false); setMergePair(null); }} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            {mergeSuccess && (
+              <div className="mx-5 mt-3 px-3 py-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-sm text-green-700 dark:text-green-400 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4" /> {mergeSuccess}
+              </div>
+            )}
+
+            <div className="flex-1 overflow-y-auto p-5">
+              {dupLoading ? (
+                <div className="text-center py-12 text-gray-400">Scanning for duplicates...</div>
+              ) : duplicates.length === 0 ? (
+                <div className="text-center py-12 text-gray-400">
+                  <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-green-400" />
+                  No duplicates found!
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {duplicates.map((dup, i) => (
+                    <div key={`${dup.id1}-${dup.id2}`}
+                      className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:border-gray-300 dark:hover:border-gray-600 transition-colors">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 grid grid-cols-2 gap-4">
+                          <div>
+                            <p className="font-medium text-gray-900 dark:text-white text-sm">{dup.name1}</p>
+                            <p className="text-xs text-gray-500">{dup.city1}, {dup.state1}</p>
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900 dark:text-white text-sm">{dup.name2}</p>
+                            <p className="text-xs text-gray-500">{dup.city2}, {dup.state2}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 ml-4">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
+                            dup.confidence >= 90 ? "bg-red-100 text-red-800" :
+                            dup.confidence >= 75 ? "bg-amber-100 text-amber-800" : "bg-gray-100 text-gray-600"
+                          }`}>
+                            {Math.round(dup.confidence)}% match
+                          </span>
+                          <button onClick={() => { setMergePair(dup); setMergePrimaryId(dup.id1); }}
+                            className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 font-medium flex items-center gap-1">
+                            <Merge className="w-3 h-3" /> Merge
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {dup.reasons.map((r, j) => (
+                          <span key={j} className="text-[11px] bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded">{r}</span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Merge confirmation dialog */}
+      {mergePair && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-[560px] p-6">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+              <Merge className="w-5 h-5 text-blue-600" /> Merge Records
+            </h3>
+            <p className="text-sm text-gray-500 mb-5">Select which record to keep as primary. The other will be merged into it and deleted.</p>
+            
+            <div className="space-y-3 mb-6">
+              <label className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                mergePrimaryId === mergePair.id1 ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20" : "border-gray-200 dark:border-gray-700 hover:border-gray-300"
+              }`} onClick={() => setMergePrimaryId(mergePair.id1)}>
+                <input type="radio" name="primary" checked={mergePrimaryId === mergePair.id1} onChange={() => setMergePrimaryId(mergePair.id1)}
+                  className="mt-0.5" />
+                <div>
+                  <p className="font-medium text-gray-900 dark:text-white text-sm">{mergePair.name1}</p>
+                  <p className="text-xs text-gray-500">{mergePair.city1}, {mergePair.state1}</p>
+                  {mergePrimaryId === mergePair.id1 && <span className="text-[11px] text-blue-600 font-medium">← Primary (kept)</span>}
+                </div>
+              </label>
+              <label className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                mergePrimaryId === mergePair.id2 ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20" : "border-gray-200 dark:border-gray-700 hover:border-gray-300"
+              }`} onClick={() => setMergePrimaryId(mergePair.id2)}>
+                <input type="radio" name="primary" checked={mergePrimaryId === mergePair.id2} onChange={() => setMergePrimaryId(mergePair.id2)}
+                  className="mt-0.5" />
+                <div>
+                  <p className="font-medium text-gray-900 dark:text-white text-sm">{mergePair.name2}</p>
+                  <p className="text-xs text-gray-500">{mergePair.city2}, {mergePair.state2}</p>
+                  {mergePrimaryId === mergePair.id2 && <span className="text-[11px] text-blue-600 font-medium">← Primary (kept)</span>}
+                </div>
+              </label>
+            </div>
+
+            <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-lg p-3 mb-5 text-xs text-amber-700 dark:text-amber-400">
+              <strong>What happens on merge:</strong> All stores, contacts, deals, and activities from the secondary record will be moved to the primary. The secondary record will be permanently deleted.
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => { setMergePair(null); setMergePrimaryId(null); }}
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 dark:text-gray-400">Cancel</button>
+              <button onClick={doMerge} disabled={mergeLoading || !mergePrimaryId}
+                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium">
+                {mergeLoading ? "Merging..." : "Merge Records"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -472,7 +768,7 @@ function ProspectsPage() {
               ) : prospects.length === 0 ? (
                 <tr><td colSpan={10} className="px-4 py-12 text-center text-gray-400">No prospects found</td></tr>
               ) : prospects.map(p => (
-                <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer"
+                <tr key={p.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer ${selected.has(p.id) ? "bg-blue-50/50 dark:bg-blue-900/10" : ""}`}
                   onClick={(e) => { if ((e.target as HTMLElement).tagName !== "INPUT") router.push(`/prospects/${p.id}`); }}>
                   <td className="px-4 py-3">
                     <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleSelect(p.id)} className="rounded" />

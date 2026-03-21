@@ -3,7 +3,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sql } from "drizzle-orm";
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   const { id } = await params;
   try {
     const po = db.get(sql`
@@ -25,12 +28,17 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: "PO not found" }, { status: 404 });
     }
 
+    // Line items with received quantities
     const lineItems = db.all(sql`
       SELECT
         li.*,
         s.sku,
         s.color_name,
-        p.name as product_name
+        p.name as product_name,
+        COALESCE((
+          SELECT SUM(m.quantity) FROM inventory_movements m
+          WHERE m.sku_id = li.sku_id AND m.reference_id = li.po_id AND m.reason = 'purchase'
+        ), 0) as received_quantity
       FROM inventory_po_line_items li
       JOIN catalog_skus s ON li.sku_id = s.id
       JOIN catalog_products p ON s.product_id = p.id
@@ -43,53 +51,154 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       ORDER BY created_at DESC
     `);
 
-    return NextResponse.json({ ...po, lineItems, qcInspections });
+    // Receipt history (inventory movements for this PO)
+    const receiptHistory = db.all(sql`
+      SELECT
+        m.*,
+        s.sku,
+        s.color_name,
+        p.name as product_name
+      FROM inventory_movements m
+      JOIN catalog_skus s ON m.sku_id = s.id
+      JOIN catalog_products p ON s.product_id = p.id
+      WHERE m.reference_id = ${id} AND m.reason = 'purchase'
+      ORDER BY m.created_at DESC
+    `);
+
+    return NextResponse.json({
+      ...(po as object),
+      lineItems,
+      qcInspections,
+      receiptHistory,
+    });
   } catch (error) {
     console.error("PO detail error:", error);
-    return NextResponse.json({ error: "Failed to fetch PO" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to fetch PO" },
+      { status: 500 }
+    );
   }
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   const { id } = await params;
   try {
     const body = await request.json();
-    const { status, trackingNumber, trackingCarrier, notes, shippingCost, dutiesCost, freightCost, actualArrivalDate } = body;
+    const {
+      status,
+      trackingNumber,
+      trackingCarrier,
+      notes,
+      shippingCost,
+      dutiesCost,
+      freightCost,
+      actualArrivalDate,
+      expectedShipDate,
+      expectedArrivalDate,
+      orderDate,
+    } = body;
 
     const sets: string[] = [];
     const values: unknown[] = [];
 
-    if (status) { sets.push("status = ?"); values.push(status); }
-    if (trackingNumber !== undefined) { sets.push("tracking_number = ?"); values.push(trackingNumber); }
-    if (trackingCarrier !== undefined) { sets.push("tracking_carrier = ?"); values.push(trackingCarrier); }
-    if (notes !== undefined) { sets.push("notes = ?"); values.push(notes); }
-    if (shippingCost !== undefined) { sets.push("shipping_cost = ?"); values.push(shippingCost); }
-    if (dutiesCost !== undefined) { sets.push("duties_cost = ?"); values.push(dutiesCost); }
-    if (freightCost !== undefined) { sets.push("freight_cost = ?"); values.push(freightCost); }
-    if (actualArrivalDate !== undefined) { sets.push("actual_arrival_date = ?"); values.push(actualArrivalDate); }
-
-    if (sets.length === 0) {
-      return NextResponse.json({ error: "No fields to update" }, { status: 400 });
+    if (status) {
+      sets.push("status = ?");
+      values.push(status);
+    }
+    if (trackingNumber !== undefined) {
+      sets.push("tracking_number = ?");
+      values.push(trackingNumber);
+    }
+    if (trackingCarrier !== undefined) {
+      sets.push("tracking_carrier = ?");
+      values.push(trackingCarrier);
+    }
+    if (notes !== undefined) {
+      sets.push("notes = ?");
+      values.push(notes);
+    }
+    if (shippingCost !== undefined) {
+      sets.push("shipping_cost = ?");
+      values.push(shippingCost);
+    }
+    if (dutiesCost !== undefined) {
+      sets.push("duties_cost = ?");
+      values.push(dutiesCost);
+    }
+    if (freightCost !== undefined) {
+      sets.push("freight_cost = ?");
+      values.push(freightCost);
+    }
+    if (actualArrivalDate !== undefined) {
+      sets.push("actual_arrival_date = ?");
+      values.push(actualArrivalDate);
+    }
+    if (expectedShipDate !== undefined) {
+      sets.push("expected_ship_date = ?");
+      values.push(expectedShipDate);
+    }
+    if (expectedArrivalDate !== undefined) {
+      sets.push("expected_arrival_date = ?");
+      values.push(expectedArrivalDate);
+    }
+    if (orderDate !== undefined) {
+      sets.push("order_date = ?");
+      values.push(orderDate);
     }
 
-    // Use raw sqlite for dynamic updates
+    // When marking as submitted, set order_date if not already set
+    if (status === "submitted") {
+      const po = db.get(
+        sql`SELECT order_date FROM inventory_purchase_orders WHERE id = ${id}`
+      ) as { order_date: string | null } | undefined;
+      if (po && !po.order_date && orderDate === undefined) {
+        sets.push("order_date = ?");
+        values.push(new Date().toISOString().split("T")[0]);
+      }
+    }
+
+    if (sets.length === 0) {
+      return NextResponse.json(
+        { error: "No fields to update" },
+        { status: 400 }
+      );
+    }
+
     const { sqlite } = await import("@/lib/db");
-    sqlite.prepare(`UPDATE inventory_purchase_orders SET ${sets.join(", ")} WHERE id = ?`).run(...values, id);
+    sqlite
+      .prepare(
+        `UPDATE inventory_purchase_orders SET ${sets.join(", ")} WHERE id = ?`
+      )
+      .run(...values, id);
 
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("PO update error:", error);
-    return NextResponse.json({ error: "Failed to update PO" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to update PO" },
+      { status: 500 }
+    );
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   const { id } = await params;
   try {
-    db.run(sql`DELETE FROM inventory_purchase_orders WHERE id = ${id} AND status = 'draft'`);
+    db.run(
+      sql`DELETE FROM inventory_purchase_orders WHERE id = ${id} AND status = 'draft'`
+    );
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("PO delete error:", error);
-    return NextResponse.json({ error: "Failed to delete PO" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to delete PO" },
+      { status: 500 }
+    );
   }
 }
