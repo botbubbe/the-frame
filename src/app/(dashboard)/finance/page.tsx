@@ -16,9 +16,27 @@ import {
   RefreshCw,
   Calendar,
   X,
+  Download,
+  AlertTriangle,
+  CheckCircle,
+  Scale,
 } from "lucide-react";
 
 // ── Types ──
+
+interface PnlComparison {
+  priorPeriod: { start: string; end: string; label: string };
+  revenue: number;
+  cogs: number;
+  grossMargin: number;
+  totalExpenses: number;
+  netIncome: number;
+  revenueChange: number;
+  cogsChange: number;
+  grossMarginChange: number;
+  expensesChange: number;
+  netIncomeChange: number;
+}
 
 interface PnlSummary {
   period: { start: string; end: string; label: string };
@@ -40,6 +58,7 @@ interface PnlSummary {
     orderCount: number;
   }>;
   expensesByCategory: Array<{ category: string; amount: number; budget: number | null }>;
+  comparison: PnlComparison | null;
 }
 
 interface CashFlowSummary {
@@ -90,6 +109,34 @@ interface ExpenseCategory {
   budgetMonthly: number | null;
 }
 
+interface ReconciliationEntry {
+  channel: string;
+  channelLabel: string;
+  periodStart: string;
+  periodEnd: string;
+  expectedRevenue: number;
+  settlementGross: number;
+  settlementFees: number;
+  settlementNet: number;
+  discrepancy: number;
+  discrepancyPct: number;
+  settlementId: string | null;
+  settlementStatus: string | null;
+  orderCount: number;
+}
+
+interface ReconciliationData {
+  entries: ReconciliationEntry[];
+  summary: {
+    totalExpected: number;
+    totalReceived: number;
+    totalDiscrepancy: number;
+    totalDiscrepancyPct: number;
+    flaggedCount: number;
+    totalEntries: number;
+  };
+}
+
 // ── Helper ──
 function fmt(n: number): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
@@ -97,6 +144,19 @@ function fmt(n: number): string {
 
 function pct(n: number): string {
   return `${n.toFixed(1)}%`;
+}
+
+function changeBadge(change: number, invertColor = false) {
+  if (change === 0) return null;
+  const isPositive = change > 0;
+  const colorClass = invertColor
+    ? (isPositive ? "text-red-600" : "text-green-600")
+    : (isPositive ? "text-green-600" : "text-red-600");
+  return (
+    <span className={`inline-flex items-center text-xs font-medium ${colorClass}`}>
+      {isPositive ? "↑" : "↓"} {Math.abs(change).toFixed(1)}%
+    </span>
+  );
 }
 
 const CHANNEL_COLORS: Record<string, string> = {
@@ -125,7 +185,10 @@ function FinancePageContent() {
   const [stlList, setStlList] = useState<Settlement[]>([]);
   const [expenseList, setExpenseList] = useState<Expense[]>([]);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
+  const [reconciliation, setReconciliation] = useState<ReconciliationData | null>(null);
   const [period, setPeriod] = useState<string>("mtd");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
   const [loading, setLoading] = useState(true);
 
   // Expense form state
@@ -136,10 +199,14 @@ function FinancePageContent() {
   });
 
   const loadPnl = useCallback(async () => {
-    const res = await fetch(`/api/v1/finance/pnl?period=${period}`);
+    let url = `/api/v1/finance/pnl?period=${period}`;
+    if (period === "custom" && customStart && customEnd) {
+      url += `&start=${customStart}&end=${customEnd}`;
+    }
+    const res = await fetch(url);
     const data = await res.json();
     setPnl(data);
-  }, [period]);
+  }, [period, customStart, customEnd]);
 
   const loadCashFlow = useCallback(async () => {
     const res = await fetch("/api/v1/finance/cash-flow");
@@ -160,14 +227,28 @@ function FinancePageContent() {
     setCategories(data.categories || []);
   }, []);
 
+  const loadReconciliation = useCallback(async () => {
+    const res = await fetch("/api/v1/finance/reconciliation");
+    const data = await res.json();
+    setReconciliation(data);
+  }, []);
+
   useEffect(() => {
     setLoading(true);
-    Promise.all([loadPnl(), loadCashFlow(), loadSettlements(), loadExpenses()])
+    Promise.all([loadPnl(), loadCashFlow(), loadSettlements(), loadExpenses(), loadReconciliation()])
       .finally(() => setLoading(false));
-  }, [loadPnl, loadCashFlow, loadSettlements, loadExpenses]);
+  }, [loadPnl, loadCashFlow, loadSettlements, loadExpenses, loadReconciliation]);
 
   const setTab = (t: string) => {
     router.push(`/finance?tab=${t}`);
+  };
+
+  const handleExportCsv = () => {
+    let url = `/api/v1/finance/pnl?period=${period}&format=csv`;
+    if (period === "custom" && customStart && customEnd) {
+      url += `&start=${customStart}&end=${customEnd}`;
+    }
+    window.open(url, "_blank");
   };
 
   const handleAddExpense = async (e: React.FormEvent) => {
@@ -227,10 +308,35 @@ function FinancePageContent() {
             onChange={(e) => setPeriod(e.target.value)}
             className="rounded-md border bg-background px-3 py-2 text-sm"
           >
-            <option value="mtd">Month to Date</option>
-            <option value="qtd">Quarter to Date</option>
+            <option value="mtd">This Month</option>
+            <option value="last_month">Last Month</option>
+            <option value="qtd">This Quarter</option>
             <option value="ytd">Year to Date</option>
+            <option value="custom">Custom Range</option>
           </select>
+          {period === "custom" && (
+            <>
+              <input
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                className="rounded-md border bg-background px-3 py-2 text-sm"
+              />
+              <span className="text-muted-foreground">to</span>
+              <input
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                className="rounded-md border bg-background px-3 py-2 text-sm"
+              />
+              <button
+                onClick={loadPnl}
+                className="rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground hover:bg-primary/90"
+              >
+                Apply
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -240,6 +346,7 @@ function FinancePageContent() {
           {[
             { key: "pnl", label: "P&L", icon: TrendingUp },
             { key: "settlements", label: "Settlements", icon: Receipt },
+            { key: "reconciliation", label: "Reconciliation", icon: Scale },
             { key: "expenses", label: "Expenses", icon: CreditCard },
             { key: "cashflow", label: "Cash Flow", icon: Wallet },
           ].map((t) => (
@@ -260,12 +367,18 @@ function FinancePageContent() {
       </div>
 
       {/* Tab Content */}
-      {tab === "pnl" && pnl && <PnlTab pnl={pnl} />}
+      {tab === "pnl" && pnl && <PnlTab pnl={pnl} onExportCsv={handleExportCsv} />}
       {tab === "settlements" && (
         <SettlementsTab
           settlements={stlList}
           onSyncToXero={handleSyncToXero}
           onRefresh={loadSettlements}
+        />
+      )}
+      {tab === "reconciliation" && (
+        <ReconciliationTab
+          data={reconciliation}
+          onRefresh={loadReconciliation}
         />
       )}
       {tab === "expenses" && (
@@ -288,24 +401,67 @@ function FinancePageContent() {
 
 // ── P&L Tab ──
 
-function PnlTab({ pnl }: { pnl: PnlSummary }) {
+function PnlTab({ pnl, onExportCsv }: { pnl: PnlSummary; onExportCsv: () => void }) {
+  const comp = pnl.comparison;
+
   return (
     <div className="space-y-6">
-      {/* Summary Cards */}
+      {/* Export Button */}
+      <div className="flex justify-end">
+        <button
+          onClick={onExportCsv}
+          className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-muted"
+        >
+          <Download className="h-4 w-4" /> Export CSV
+        </button>
+      </div>
+
+      {/* Summary Cards with Comparison */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <SummaryCard title="Revenue" value={fmt(pnl.revenue)} icon={DollarSign} trend={null} />
-        <SummaryCard title="COGS" value={fmt(pnl.cogs)} icon={TrendingDown} trend={null} negative />
-        <SummaryCard title="Gross Margin" value={fmt(pnl.grossMargin)} subtitle={pct(pnl.grossMarginPct)} icon={TrendingUp} trend={null} />
-        <SummaryCard title="Expenses + Fees" value={fmt(pnl.totalExpenses + pnl.totalFees)} icon={CreditCard} trend={null} negative />
+        <SummaryCard title="Revenue" value={fmt(pnl.revenue)} icon={DollarSign} trend={comp ? changeBadge(comp.revenueChange) : null} />
+        <SummaryCard title="COGS" value={fmt(pnl.cogs)} icon={TrendingDown} trend={comp ? changeBadge(comp.cogsChange, true) : null} negative />
+        <SummaryCard title="Gross Margin" value={fmt(pnl.grossMargin)} subtitle={pct(pnl.grossMarginPct)} icon={TrendingUp} trend={comp ? changeBadge(comp.grossMarginChange) : null} />
+        <SummaryCard title="Expenses + Fees" value={fmt(pnl.totalExpenses + pnl.totalFees)} icon={CreditCard} trend={comp ? changeBadge(comp.expensesChange, true) : null} negative />
         <SummaryCard
           title="Net Income"
           value={fmt(pnl.netIncome)}
           icon={Wallet}
-          trend={null}
+          trend={comp ? changeBadge(comp.netIncomeChange) : null}
           negative={pnl.netIncome < 0}
           highlight
         />
       </div>
+
+      {/* Period Comparison Banner */}
+      {comp && (comp.revenue > 0 || pnl.revenue > 0) && (
+        <div className="rounded-lg border bg-muted/30 p-4">
+          <div className="text-sm text-muted-foreground mb-2">
+            vs. prior period ({comp.priorPeriod.start} to {comp.priorPeriod.end})
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+            <div>
+              <span className="text-muted-foreground">Revenue</span>
+              <div className="font-medium">{fmt(comp.revenue)} {changeBadge(comp.revenueChange)}</div>
+            </div>
+            <div>
+              <span className="text-muted-foreground">COGS</span>
+              <div className="font-medium">{fmt(comp.cogs)}</div>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Gross Margin</span>
+              <div className="font-medium">{fmt(comp.grossMargin)}</div>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Expenses</span>
+              <div className="font-medium">{fmt(comp.totalExpenses)}</div>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Net Income</span>
+              <div className="font-medium">{fmt(comp.netIncome)}</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Channel Breakdown */}
       <div className="rounded-lg border bg-card">
@@ -373,7 +529,7 @@ function PnlTab({ pnl }: { pnl: PnlSummary }) {
       {pnl.expensesByCategory.length > 0 && (
         <div className="rounded-lg border bg-card">
           <div className="p-4 border-b">
-            <h3 className="font-semibold">Expenses by Category</h3>
+            <h3 className="font-semibold">Operating Expenses by Category</h3>
           </div>
           <div className="p-4 space-y-3">
             {pnl.expensesByCategory.map((ec) => (
@@ -399,9 +555,30 @@ function PnlTab({ pnl }: { pnl: PnlSummary }) {
                 </div>
               </div>
             ))}
+            <div className="flex items-center justify-between pt-2 border-t font-semibold text-sm">
+              <span>Total Operating Expenses</span>
+              <span>{fmt(pnl.totalExpenses)}</span>
+            </div>
           </div>
         </div>
       )}
+
+      {/* Net Income Statement */}
+      <div className="rounded-lg border bg-card">
+        <div className="p-4 border-b">
+          <h3 className="font-semibold">Income Statement Summary</h3>
+        </div>
+        <div className="p-4 space-y-2 text-sm">
+          <div className="flex justify-between"><span>Revenue</span><span className="font-medium">{fmt(pnl.revenue)}</span></div>
+          <div className="flex justify-between text-muted-foreground"><span>Less: COGS</span><span>({fmt(pnl.cogs)})</span></div>
+          <div className="flex justify-between border-t pt-2 font-semibold"><span>Gross Margin</span><span>{fmt(pnl.grossMargin)} <span className="text-muted-foreground font-normal">({pct(pnl.grossMarginPct)})</span></span></div>
+          <div className="flex justify-between text-muted-foreground"><span>Less: Platform Fees</span><span>({fmt(pnl.totalFees)})</span></div>
+          <div className="flex justify-between text-muted-foreground"><span>Less: Operating Expenses</span><span>({fmt(pnl.totalExpenses)})</span></div>
+          <div className={`flex justify-between border-t pt-2 font-bold text-base ${pnl.netIncome >= 0 ? "text-green-600" : "text-red-600"}`}>
+            <span>Net Income</span><span>{fmt(pnl.netIncome)}</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -479,6 +656,136 @@ function SettlementsTab({
             )}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+// ── Reconciliation Tab ──
+
+function ReconciliationTab({
+  data,
+  onRefresh,
+}: {
+  data: ReconciliationData | null;
+  onRefresh: () => void;
+}) {
+  if (!data) {
+    return (
+      <div className="flex items-center justify-center h-32 text-muted-foreground">
+        No reconciliation data available
+      </div>
+    );
+  }
+
+  const { entries, summary } = data;
+  const THRESHOLD = 2; // Flag discrepancies > 2%
+
+  return (
+    <div className="space-y-6">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <SummaryCard
+          title="Expected (Orders)"
+          value={fmt(summary.totalExpected)}
+          icon={DollarSign}
+          trend={null}
+        />
+        <SummaryCard
+          title="Received (Settlements)"
+          value={fmt(summary.totalReceived)}
+          icon={Receipt}
+          trend={null}
+        />
+        <SummaryCard
+          title="Total Discrepancy"
+          value={fmt(summary.totalDiscrepancy)}
+          subtitle={pct(summary.totalDiscrepancyPct)}
+          icon={Scale}
+          trend={null}
+          negative={Math.abs(summary.totalDiscrepancy) > 0}
+          highlight
+        />
+        <SummaryCard
+          title="Flagged"
+          value={`${summary.flaggedCount} of ${summary.totalEntries}`}
+          subtitle={summary.flaggedCount > 0 ? "Need review" : "All clear"}
+          icon={summary.flaggedCount > 0 ? AlertTriangle : CheckCircle}
+          trend={null}
+          negative={summary.flaggedCount > 0}
+        />
+      </div>
+
+      {/* Reconciliation Table */}
+      <div className="rounded-lg border bg-card">
+        <div className="p-4 border-b flex items-center justify-between">
+          <h3 className="font-semibold">Settlement Reconciliation</h3>
+          <button onClick={onRefresh} className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-muted">
+            <RefreshCw className="h-4 w-4" /> Refresh
+          </button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/50">
+                <th className="text-left p-3 font-medium">Channel</th>
+                <th className="text-left p-3 font-medium">Period</th>
+                <th className="text-right p-3 font-medium">Orders</th>
+                <th className="text-right p-3 font-medium">Expected</th>
+                <th className="text-right p-3 font-medium">Settlement</th>
+                <th className="text-right p-3 font-medium">Fees</th>
+                <th className="text-right p-3 font-medium">Discrepancy</th>
+                <th className="text-left p-3 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((e, i) => {
+                const isFlagged = Math.abs(e.discrepancyPct) > THRESHOLD;
+                return (
+                  <tr
+                    key={`${e.settlementId}-${i}`}
+                    className={`border-b hover:bg-muted/30 ${isFlagged ? "bg-red-50 dark:bg-red-950/20" : ""}`}
+                  >
+                    <td className="p-3">
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${CHANNEL_COLORS[e.channel] || "bg-gray-100"}`}>
+                        {e.channelLabel}
+                      </span>
+                    </td>
+                    <td className="p-3 text-muted-foreground">{e.periodStart} → {e.periodEnd}</td>
+                    <td className="text-right p-3">{e.orderCount}</td>
+                    <td className="text-right p-3">{fmt(e.expectedRevenue)}</td>
+                    <td className="text-right p-3">{fmt(e.settlementGross)}</td>
+                    <td className="text-right p-3 text-muted-foreground">{fmt(e.settlementFees)}</td>
+                    <td className="text-right p-3">
+                      <div className="flex items-center justify-end gap-1">
+                        {isFlagged && <AlertTriangle className="h-3.5 w-3.5 text-red-500" />}
+                        <span className={`font-medium ${isFlagged ? "text-red-600" : Math.abs(e.discrepancy) > 0 ? "text-yellow-600" : "text-green-600"}`}>
+                          {fmt(e.discrepancy)}
+                        </span>
+                        <span className="text-xs text-muted-foreground">({pct(e.discrepancyPct)})</span>
+                      </div>
+                    </td>
+                    <td className="p-3">
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${STATUS_COLORS[e.settlementStatus || ""] || "bg-gray-100"}`}>
+                        {(e.settlementStatus || "unknown").replace("_", " ")}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+              {entries.length === 0 && (
+                <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">No settlement data to reconcile</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div className="text-xs text-muted-foreground flex items-center gap-4">
+        <span className="flex items-center gap-1"><AlertTriangle className="h-3 w-3 text-red-500" /> Discrepancy &gt; 2% — needs review</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-yellow-500" /> Minor discrepancy</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-green-500" /> Matched</span>
       </div>
     </div>
   );
@@ -949,7 +1256,6 @@ function ExpensesTab({
               <button onClick={() => { setShowCategoryModal(false); setEditingCategory(null); }} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
             </div>
             <div className="p-4 space-y-4">
-              {/* Add/Edit Category Form */}
               <form onSubmit={handleAddCategory} className="flex gap-2">
                 <input placeholder="Category name" value={catForm.name} onChange={(e) => setCatForm({ ...catForm, name: e.target.value })}
                   className="flex-1 rounded-md border bg-background px-3 py-2 text-sm" required />
@@ -959,8 +1265,6 @@ function ExpensesTab({
                   {editingCategory ? "Update" : "Add"}
                 </button>
               </form>
-
-              {/* Category List */}
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {categories.map((cat) => (
                   <div key={cat.id} className="flex items-center justify-between p-2 rounded-md border bg-muted/20">
@@ -1097,7 +1401,7 @@ function SummaryCard({
   value: string;
   subtitle?: string;
   icon: typeof DollarSign;
-  trend: string | null;
+  trend: React.ReactNode;
   negative?: boolean;
   highlight?: boolean;
 }) {
@@ -1108,8 +1412,10 @@ function SummaryCard({
         <Icon className={`h-4 w-4 ${negative ? "text-red-500" : "text-muted-foreground"}`} />
       </div>
       <div className={`text-2xl font-bold ${negative ? "text-red-600" : ""}`}>{value}</div>
-      {subtitle && <div className="text-sm text-muted-foreground mt-1">{subtitle}</div>}
-      {trend && <div className="text-xs text-muted-foreground mt-1">{trend}</div>}
+      <div className="flex items-center gap-2 mt-1">
+        {subtitle && <span className="text-sm text-muted-foreground">{subtitle}</span>}
+        {trend}
+      </div>
     </div>
   );
 }
