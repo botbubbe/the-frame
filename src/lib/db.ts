@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import path from "path";
 import fs from "fs";
 
@@ -23,3 +24,14 @@ sqlite.pragma("temp_store = MEMORY");
 
 export const db = drizzle(sqlite);
 export { sqlite };
+
+// Auto-run migrations on startup (idempotent — safe to run every time)
+try {
+  const migrationsFolder = path.join(process.cwd(), "drizzle", "migrations");
+  if (fs.existsSync(migrationsFolder)) {
+    migrate(db, { migrationsFolder });
+    console.log("[db] Migrations applied successfully");
+  }
+} catch (err) {
+  console.error("[db] Migration error:", err);
+}
