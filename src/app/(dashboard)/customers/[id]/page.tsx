@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { sqlite } from "@/lib/db";
 import { CustomerDetail } from "@/modules/customers/components/customer-detail";
 import { predictReorder } from "@/modules/customers/lib/reorder-engine";
+import { predictChurn } from "@/modules/customers/agents/churn-predictor";
 import { notFound } from "next/navigation";
 
 async function getAccount(id: string) {
@@ -56,6 +57,10 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
 
   const reorderPrediction = predictReorder(id);
 
+  // Get churn risk data for this account
+  const allRisks = predictChurn();
+  const churnRisk = allRisks.find(r => r.accountId === id) || null;
+
   return (
     <CustomerDetail
       account={account}
@@ -63,6 +68,13 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       activities={activities}
       healthHistory={healthHistory}
       reorderPrediction={reorderPrediction}
+      churnRisk={churnRisk ? {
+        healthScore: churnRisk.healthScore,
+        healthStatus: churnRisk.healthStatus,
+        riskFactors: churnRisk.riskFactors,
+        recommendation: churnRisk.recommendation,
+        daysSinceLastOrder: churnRisk.daysSinceLastOrder,
+      } : null}
     />
   );
 }

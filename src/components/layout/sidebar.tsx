@@ -73,15 +73,42 @@ const bottomNav = [
   { title: "Settings", href: "/settings", icon: Settings },
 ];
 
+// ── Role-based navigation filtering ──
+
+const ROLE_ALLOWED_HREFS: Record<string, string[]> = {
+  owner: ["*"],
+  sales_manager: ["/dashboard", "/prospects", "/pipeline", "/campaigns", "/campaigns/inbox", "/customers"],
+  warehouse: ["/dashboard", "/orders", "/catalog", "/inventory"],
+  finance: ["/dashboard", "/orders", "/finance"],
+  marketing: ["/dashboard", "/marketing", "/catalog", "/campaigns"],
+  support: ["/dashboard", "/orders", "/customers"],
+  ai: ["/dashboard", "/ai"],
+};
+
+function filterNavByRole(
+  items: typeof salesNav,
+  role: string
+): typeof salesNav {
+  const allowed = ROLE_ALLOWED_HREFS[role];
+  if (!allowed) return [];
+  if (allowed.includes("*")) return items;
+  return items.filter((item) => allowed.includes(item.href));
+}
+
 export function AppSidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const user = session?.user;
+  const role = (user as { role?: string } | undefined)?.role || "support";
   const initials = user?.name
     ?.split(" ")
     .map((n) => n[0])
     .join("")
     .toUpperCase() || "?";
+
+  const filteredSales = filterNavByRole(salesNav, role);
+  const filteredOps = filterNavByRole(operationsNav, role);
+  const filteredInsights = filterNavByRole(insightsNav, role);
 
   return (
     <Sidebar collapsible="icon">
