@@ -1,50 +1,195 @@
 /**
  * Automated Report Generator
- * Creates weekly business summary reports.
+ * Creates weekly/monthly business summary reports from real data,
+ * stores them in reporting_logs for history.
  */
 
-export function generateWeeklyReport(): string {
+import { db } from "@/lib/db";
+import { reportingLogs } from "@/modules/core/schema";
+import { sql } from "drizzle-orm";
+import { detectTrends } from "./trend-detector";
+import { calculateBusinessHealth } from "../lib/business-health";
+
+export interface ReportData {
+  id: string;
+  period: "weekly" | "monthly";
+  dateRange: { from: string; to: string };
+  revenue: { total: number; priorTotal: number; changePercent: number };
+  orders: { count: number; priorCount: number; avgOrderValue: number };
+  topProducts: { sku: string; name: string; units: number; revenue: number }[];
+  channelBreakdown: { channel: string; orders: number; revenue: number; percent: number }[];
+  healthScore: number;
+  healthStatus: string;
+  generatedAt: string;
+  markdown: string;
+}
+
+function fmt(n: number): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
+}
+
+function pct(n: number): string {
+  const sign = n > 0 ? "+" : "";
+  return `${sign}${n.toFixed(1)}%`;
+}
+
+export function generateReport(period: "weekly" | "monthly" = "weekly"): ReportData {
+  const days = period === "weekly" ? 7 : 30;
   const now = new Date();
-  const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const currentStart = new Date(now.getTime() - days * 86400000);
+  const priorStart = new Date(currentStart.getTime() - days * 86400000);
 
-  return `# Weekly Business Report
-*${weekStart.toLocaleDateString()} — ${now.toLocaleDateString()}*
+  const nowStr = now.toISOString().slice(0, 10);
+  const currentStartStr = currentStart.toISOString().slice(0, 10);
+  const priorStartStr = priorStart.toISOString().slice(0, 10);
 
-## Pipeline
-- Active deals: 12
-- New deals: 4
-- Deals won: 2 ($4,200)
-- Deals lost: 1
-- Conversion rate: 16.7%
+  // ── Revenue & order counts ──
+  const revData = db.all<{ period_label: string; total_revenue: number; order_count: number }>(sql`
+    SELECT
+      CASE WHEN placed_at >= ${currentStartStr} THEN 'current' ELSE 'prior' END AS period_label,
+      COALESCE(SUM(total), 0) AS total_revenue,
+      COUNT(*) AS order_count
+    FROM orders
+    WHERE placed_at >= ${priorStartStr}
+      AND status NOT IN ('cancelled', 'returned')
+    GROUP BY period_label
+  `);
+
+  const current = revData.find((r) => r.period_label === "current") || { total_revenue: 0, order_count: 0 };
+  const prior = revData.find((r) => r.period_label === "prior") || { total_revenue: 0, order_count: 0 };
+
+  const revenueChange = prior.total_revenue > 0
+    ? ((current.total_revenue - prior.total_revenue) / prior.total_revenue) * 100
+    : current.total_revenue > 0 ? 100 : 0;
+
+  // ── Top products ──
+  const topProducts = db.all<{ sku: string; product_name: string; units: number; revenue: number }>(sql`
+    SELECT
+      oi.sku,
+      oi.product_name,
+      SUM(oi.quantity) AS units,
+      SUM(oi.total_price) AS revenue
+    FROM order_items oi
+    JOIN orders o ON o.id = oi.order_id
+    WHERE o.placed_at >= ${currentStartStr}
+      AND o.status NOT IN ('cancelled', 'returned')
+    GROUP BY oi.sku
+    ORDER BY revenue DESC
+    LIMIT 10
+  `);
+
+  // ── Channel breakdown ──
+  const channelData = db.all<{ channel: string; orders: number; revenue: number }>(sql`
+    SELECT
+      channel,
+      COUNT(*) AS orders,
+      COALESCE(SUM(total), 0) AS revenue
+    FROM orders
+    WHERE placed_at >= ${currentStartStr}
+      AND status NOT IN ('cancelled', 'returned')
+    GROUP BY channel
+    ORDER BY revenue DESC
+  `);
+
+  const totalRevenue = current.total_revenue || 1;
+  const channelBreakdown = channelData.map((c) => ({
+    channel: c.channel,
+    orders: c.orders,
+    revenue: c.revenue,
+    percent: Math.round((c.revenue / totalRevenue) * 1000) / 10,
+  }));
+
+  // ── Health score ──
+  const health = calculateBusinessHealth();
+
+  // ── Build markdown report ──
+  const channelLabel = (ch: string) => {
+    const map: Record<string, string> = {
+      shopify_dtc: "Shopify DTC",
+      shopify_wholesale: "Shopify Wholesale",
+      faire: "Faire",
+      direct: "Direct",
+      phone: "Phone",
+    };
+    return map[ch] || ch;
+  };
+
+  const markdown = `# ${period === "weekly" ? "Weekly" : "Monthly"} Business Report
+*${currentStartStr} — ${nowStr}*
+
+## Business Health: ${health.overall}/100 (${health.status})
+
+## Revenue
+- **This period:** ${fmt(current.total_revenue)}
+- **Prior period:** ${fmt(prior.total_revenue)}
+- **Change:** ${pct(revenueChange)}
 
 ## Orders
-- New orders: 8
-- Revenue: $6,450
-- Avg order value: $806
-- Channels: Shopify DTC (3), Wholesale (3), Faire (2)
+- **Count:** ${current.order_count} (prior: ${prior.order_count})
+- **Avg order value:** ${fmt(current.order_count > 0 ? current.total_revenue / current.order_count : 0)}
 
-## Inventory
-- SKUs in stock: 104/112
-- Low stock alerts: 6
-- POs in transit: 2
-- Reorder needed: 4 SKUs
+## Top Products
+${topProducts.map((p, i) => `${i + 1}. **${p.product_name}** (${p.sku}) — ${p.units} units, ${fmt(p.revenue)}`).join("\n")}
 
-## Customers
-- Active accounts: 45
-- New this week: 2
-- At-risk: 5
-- Reorder due: 3
+## Channel Performance
+${channelBreakdown.map((c) => `- **${channelLabel(c.channel)}:** ${c.orders} orders, ${fmt(c.revenue)} (${c.percent}%)`).join("\n")}
 
-## Marketing
-- Content published: 5
-- Email campaigns: 2 (42% open, 8% reply)
-- Social engagement: +12% vs last week
-
-## AI Agents
-- Agent runs: 168
-- Success rate: 94.2%
-- Token cost: $1.24
+## Health Components
+- Pipeline: ${health.components.pipeline.score}/100 — ${health.components.pipeline.label}
+- Inventory: ${health.components.inventory.score}/100 — ${health.components.inventory.label}
+- Customers: ${health.components.customers.score}/100 — ${health.components.customers.label}
+- Finance: ${health.components.finance.score}/100 — ${health.components.finance.label}
 
 ---
-*Generated by The Frame AI*`;
+*Generated by The Frame AI — ${now.toISOString()}*`;
+
+  // ── Store in reporting_logs ──
+  const reportId = crypto.randomUUID();
+  const reportData: ReportData = {
+    id: reportId,
+    period,
+    dateRange: { from: currentStartStr, to: nowStr },
+    revenue: { total: current.total_revenue, priorTotal: prior.total_revenue, changePercent: Math.round(revenueChange * 10) / 10 },
+    orders: {
+      count: current.order_count,
+      priorCount: prior.order_count,
+      avgOrderValue: current.order_count > 0 ? Math.round(current.total_revenue / current.order_count) : 0,
+    },
+    topProducts: topProducts.map((p) => ({ sku: p.sku || "", name: p.product_name, units: p.units, revenue: p.revenue })),
+    channelBreakdown,
+    healthScore: health.overall,
+    healthStatus: health.status,
+    generatedAt: now.toISOString(),
+    markdown,
+  };
+
+  db.insert(reportingLogs).values({
+    id: reportId,
+    eventType: `${period}_report`,
+    module: "intelligence",
+    metadata: reportData as any,
+  }).run();
+
+  return reportData;
+}
+
+/**
+ * Get previously generated reports from history.
+ */
+export function getReportHistory(limit = 10): ReportData[] {
+  const rows = db.all<{ metadata: string }>(sql`
+    SELECT metadata FROM reporting_logs
+    WHERE event_type IN ('weekly_report', 'monthly_report')
+      AND module = 'intelligence'
+    ORDER BY created_at DESC
+    LIMIT ${limit}
+  `);
+
+  return rows.map((r) => {
+    try {
+      return typeof r.metadata === "string" ? JSON.parse(r.metadata) : r.metadata;
+    } catch {
+      return null;
+    }
+  }).filter(Boolean) as ReportData[];
 }

@@ -27,7 +27,12 @@ interface CustomerRow {
   first_order_at: string | null;
 }
 
-type SortField = "lifetime_value" | "health_score" | "last_order_at" | "total_orders";
+type SortField = "lifetime_value" | "health_score" | "last_order_at" | "total_orders" | "days_until_reorder";
+
+function daysUntilReorder(est: string | null): number | null {
+  if (!est) return null;
+  return Math.ceil((new Date(est).getTime() - Date.now()) / 86400000);
+}
 
 export function CustomerList({ customers }: { customers: CustomerRow[] }) {
   const [tierFilter, setTierFilter] = useState<CustomerTier | "all">("all");
@@ -37,6 +42,10 @@ export function CustomerList({ customers }: { customers: CustomerRow[] }) {
   const [search, setSearch] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ created: number; updated: number } | null>(null);
+  const [runningChurn, setRunningChurn] = useState(false);
+  const [churnResult, setChurnResult] = useState<{ analyzed: number; newAlerts: number } | null>(null);
+  const [runningReminders, setRunningReminders] = useState(false);
+  const [reminderResult, setReminderResult] = useState<{ remindersCreated: number } | null>(null);
 
   const handleSync = useCallback(async () => {
     setSyncing(true);
@@ -45,12 +54,40 @@ export function CustomerList({ customers }: { customers: CustomerRow[] }) {
       const res = await fetch("/api/v1/customers/sync", { method: "POST" });
       const data = await res.json();
       setSyncResult({ created: data.created, updated: data.updated });
-      // Reload to show new accounts
       if (data.created > 0) window.location.reload();
     } catch (e) {
       console.error("Sync failed:", e);
     } finally {
       setSyncing(false);
+    }
+  }, []);
+
+  const handleChurnAnalysis = useCallback(async () => {
+    setRunningChurn(true);
+    setChurnResult(null);
+    try {
+      const res = await fetch("/api/v1/customers/churn-analysis", { method: "POST" });
+      const data = await res.json();
+      setChurnResult({ analyzed: data.analyzed, newAlerts: data.newAlerts });
+      if (data.updated > 0) window.location.reload();
+    } catch (e) {
+      console.error("Churn analysis failed:", e);
+    } finally {
+      setRunningChurn(false);
+    }
+  }, []);
+
+  const handleGenerateReminders = useCallback(async () => {
+    setRunningReminders(true);
+    setReminderResult(null);
+    try {
+      const res = await fetch("/api/v1/customers/reorder-reminders", { method: "POST" });
+      const data = await res.json();
+      setReminderResult({ remindersCreated: data.remindersCreated });
+    } catch (e) {
+      console.error("Generate reminders failed:", e);
+    } finally {
+      setRunningReminders(false);
     }
   }, []);
 
@@ -63,6 +100,11 @@ export function CustomerList({ customers }: { customers: CustomerRow[] }) {
       list = list.filter((c) => c.company_name.toLowerCase().includes(q));
     }
     list = [...list].sort((a, b) => {
+      if (sortBy === "days_until_reorder") {
+        const av = daysUntilReorder(a.next_reorder_estimate) ?? 9999;
+        const bv = daysUntilReorder(b.next_reorder_estimate) ?? 9999;
+        return sortDir === "desc" ? bv - av : av - bv;
+      }
       const av = a[sortBy] ?? 0;
       const bv = b[sortBy] ?? 0;
       return sortDir === "desc" ? (bv > av ? 1 : -1) : (av > bv ? 1 : -1);
@@ -72,7 +114,7 @@ export function CustomerList({ customers }: { customers: CustomerRow[] }) {
 
   const toggleSort = (field: SortField) => {
     if (sortBy === field) setSortDir((d) => (d === "desc" ? "asc" : "desc"));
-    else { setSortBy(field); setSortDir("desc"); }
+    else { setSortBy(field); setSortDir(field === "days_until_reorder" ? "asc" : "desc"); }
   };
 
   const formatCurrency = (v: number) => `$${v.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
@@ -82,13 +124,18 @@ export function CustomerList({ customers }: { customers: CustomerRow[] }) {
     total: customers.length,
     healthy: customers.filter((c) => c.health_status === "healthy").length,
     atRisk: customers.filter((c) => c.health_status === "at_risk").length,
+    churning: customers.filter((c) => c.health_status === "churning" || c.health_status === "churned").length,
     totalLtv: customers.reduce((s, c) => s + c.lifetime_value, 0),
+    approachingReorder: customers.filter((c) => {
+      const d = daysUntilReorder(c.next_reorder_estimate);
+      return d !== null && d <= 7;
+    }).length,
   }), [customers]);
 
   return (
     <div className="space-y-4">
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
         <div className="rounded-lg border bg-white p-4">
           <p className="text-sm text-gray-500">Total Customers</p>
           <p className="text-2xl font-bold">{stats.total}</p>
@@ -102,12 +149,20 @@ export function CustomerList({ customers }: { customers: CustomerRow[] }) {
           <p className="text-2xl font-bold text-yellow-600">{stats.atRisk}</p>
         </div>
         <div className="rounded-lg border bg-white p-4">
+          <p className="text-sm text-gray-500">Churning/Churned</p>
+          <p className="text-2xl font-bold text-red-600">{stats.churning}</p>
+        </div>
+        <div className="rounded-lg border bg-white p-4">
           <p className="text-sm text-gray-500">Total LTV</p>
           <p className="text-2xl font-bold">{formatCurrency(stats.totalLtv)}</p>
         </div>
+        <div className="rounded-lg border bg-white p-4">
+          <p className="text-sm text-gray-500">Reorder Soon</p>
+          <p className="text-2xl font-bold text-orange-600">{stats.approachingReorder}</p>
+        </div>
       </div>
 
-      {/* Filters */}
+      {/* Filters & Actions */}
       <div className="flex flex-wrap gap-3 items-center">
         <input
           type="text"
@@ -124,12 +179,40 @@ export function CustomerList({ customers }: { customers: CustomerRow[] }) {
           <option value="all">All Health</option>
           {HEALTH_STATUSES.map((s) => <option key={s} value={s}>{s.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase())}</option>)}
         </select>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-2 flex-wrap">
           {syncResult && (
-            <span className="text-xs text-green-600">
-              {syncResult.created} created, {syncResult.updated} updated
-            </span>
+            <span className="text-xs text-green-600">{syncResult.created} created, {syncResult.updated} updated</span>
           )}
+          {churnResult && (
+            <span className="text-xs text-blue-600">{churnResult.analyzed} analyzed, {churnResult.newAlerts} new alerts</span>
+          )}
+          {reminderResult && (
+            <span className="text-xs text-orange-600">{reminderResult.remindersCreated} reminders created</span>
+          )}
+          <button
+            onClick={handleGenerateReminders}
+            disabled={runningReminders}
+            className="inline-flex items-center gap-2 rounded-lg bg-orange-500 px-3 py-2 text-sm font-medium text-white hover:bg-orange-600 disabled:opacity-50"
+          >
+            {runningReminders ? (
+              <>
+                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                Generating...
+              </>
+            ) : "Generate Reminders"}
+          </button>
+          <button
+            onClick={handleChurnAnalysis}
+            disabled={runningChurn}
+            className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+          >
+            {runningChurn ? (
+              <>
+                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                Analyzing...
+              </>
+            ) : "Run Churn Analysis"}
+          </button>
           <button
             onClick={handleSync}
             disabled={syncing}
@@ -140,9 +223,7 @@ export function CustomerList({ customers }: { customers: CustomerRow[] }) {
                 <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
                 Syncing...
               </>
-            ) : (
-              "Sync Accounts"
-            )}
+            ) : "Sync Accounts"}
           </button>
         </div>
       </div>
@@ -166,33 +247,47 @@ export function CustomerList({ customers }: { customers: CustomerRow[] }) {
               <th className="px-4 py-3 cursor-pointer" onClick={() => toggleSort("last_order_at")}>
                 Last Order {sortBy === "last_order_at" ? (sortDir === "desc" ? "↓" : "↑") : ""}
               </th>
-              <th className="px-4 py-3">Next Reorder</th>
+              <th className="px-4 py-3 cursor-pointer" onClick={() => toggleSort("days_until_reorder")}>
+                Reorder In {sortBy === "days_until_reorder" ? (sortDir === "desc" ? "↓" : "↑") : ""}
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y">
-            {filtered.map((c) => (
-              <tr key={c.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3">
-                  <Link href={`/customers/${c.id}`} className="font-medium text-blue-600 hover:underline">
-                    {c.company_name}
-                  </Link>
-                </td>
-                <td className="px-4 py-3">
-                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${TIER_COLORS[c.tier]}`}>
-                    {TIER_LABELS[c.tier]}
-                  </span>
-                </td>
-                <td className="px-4 py-3 font-medium">{formatCurrency(c.lifetime_value)}</td>
-                <td className="px-4 py-3">{c.total_orders}</td>
-                <td className="px-4 py-3">
-                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${HEALTH_COLORS[c.health_status]}`}>
-                    {c.health_score} — {c.health_status.replace("_", " ")}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-gray-500">{formatDate(c.last_order_at)}</td>
-                <td className="px-4 py-3 text-gray-500">{formatDate(c.next_reorder_estimate)}</td>
-              </tr>
-            ))}
+            {filtered.map((c) => {
+              const days = daysUntilReorder(c.next_reorder_estimate);
+              return (
+                <tr key={c.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3">
+                    <Link href={`/customers/${c.id}`} className="font-medium text-blue-600 hover:underline">
+                      {c.company_name}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${TIER_COLORS[c.tier]}`}>
+                      {TIER_LABELS[c.tier]}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 font-medium">{formatCurrency(c.lifetime_value)}</td>
+                  <td className="px-4 py-3">{c.total_orders}</td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${HEALTH_COLORS[c.health_status]}`}>
+                      {c.health_status === "churned" ? "⚫" : c.health_status === "churning" ? "🔴" : c.health_status === "at_risk" ? "🟡" : "🟢"}{" "}
+                      {c.health_score} — {c.health_status.replace("_", " ")}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-gray-500">{formatDate(c.last_order_at)}</td>
+                  <td className="px-4 py-3">
+                    {days !== null ? (
+                      <span className={`font-medium ${days < 0 ? "text-red-600" : days <= 7 ? "text-yellow-600" : "text-gray-500"}`}>
+                        {days < 0 ? `${Math.abs(days)}d overdue` : `${days}d`}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
             {filtered.length === 0 && (
               <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">No customers found</td></tr>
             )}

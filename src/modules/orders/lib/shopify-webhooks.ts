@@ -1,10 +1,12 @@
-import { db } from "@/lib/db";
+import { db, sqlite } from "@/lib/db";
 import { orders, orderItems } from "@/modules/orders/schema";
 import { companies, contacts } from "@/modules/sales/schema";
 import { products, skus } from "@/modules/catalog/schema";
+import { inventory, inventoryMovements } from "@/modules/inventory/schema";
 import { webhookRegistry, verifyShopifyHmac } from "@/modules/core/lib/webhooks";
 import { eventBus } from "@/modules/core/lib/event-bus";
-import { eq, or, like } from "drizzle-orm";
+import { ensureCustomerAccount } from "@/modules/customers/lib/account-sync";
+import { eq, and } from "drizzle-orm";
 
 // ── Types for Shopify Order Webhook ──
 
@@ -17,6 +19,25 @@ interface ShopifyLineItem {
   sku: string;
   quantity: number;
   price: string;
+}
+
+interface ShopifyFulfillmentLineItem {
+  id: number;
+  variant_id: number;
+  title: string;
+  sku: string;
+  quantity: number;
+}
+
+interface ShopifyFulfillment {
+  id: number;
+  order_id: number;
+  status: string;
+  tracking_number: string | null;
+  tracking_company: string | null;
+  tracking_url: string | null;
+  created_at: string;
+  line_items: ShopifyFulfillmentLineItem[];
 }
 
 interface ShopifyOrder {
@@ -48,11 +69,7 @@ interface ShopifyOrder {
       company: string;
     };
   };
-  fulfillments?: Array<{
-    tracking_number: string;
-    tracking_company: string;
-    created_at: string;
-  }>;
+  fulfillments?: ShopifyFulfillment[];
 }
 
 // ── Channel Detection ──
@@ -64,12 +81,13 @@ function detectChannel(order: ShopifyOrder): "shopify_dtc" | "shopify_wholesale"
   return "shopify_dtc";
 }
 
-// ── Company Matching ──
+// ── Company Matching / Auto-Create ──
 
-async function findCompanyByOrder(order: ShopifyOrder): Promise<string | null> {
+async function findOrCreateCompany(order: ShopifyOrder): Promise<string | null> {
   const email = order.email || order.customer?.email;
   const companyName = order.customer?.default_address?.company;
 
+  // Try existing matches
   if (email) {
     const domain = email.split("@")[1];
     if (domain) {
@@ -83,6 +101,18 @@ async function findCompanyByOrder(order: ShopifyOrder): Promise<string | null> {
   if (companyName) {
     const nameMatch = db.select().from(companies).where(eq(companies.name, companyName)).get();
     if (nameMatch) return nameMatch.id;
+  }
+
+  // For wholesale orders, auto-create a company record
+  const channel = detectChannel(order);
+  if (channel === "shopify_wholesale" && (companyName || email)) {
+    const newCompany = db.insert(companies).values({
+      name: companyName || email || "Unknown",
+      email: email || null,
+      domain: email ? email.split("@")[1] : null,
+      source: "shopify",
+    }).returning().get();
+    return newCompany.id;
   }
 
   return null;
@@ -102,7 +132,6 @@ function mapStatus(order: ShopifyOrder): "pending" | "confirmed" | "shipped" | "
 
 async function mapLineItems(orderId: string, items: ShopifyLineItem[]) {
   for (const item of items) {
-    // Try to match product/SKU in catalog
     let productId: string | undefined;
     let skuId: string | undefined;
 
@@ -128,13 +157,48 @@ async function mapLineItems(orderId: string, items: ShopifyLineItem[]) {
   }
 }
 
+// ── Inventory Movements on Fulfillment ──
+
+function createInventoryMovements(fulfillment: ShopifyFulfillment, orderId: string) {
+  for (const item of fulfillment.line_items) {
+    if (!item.sku) continue;
+
+    const skuMatch = db.select().from(skus).where(eq(skus.sku, item.sku)).get();
+    if (!skuMatch) continue;
+
+    // Record sale movement (warehouse → out)
+    db.insert(inventoryMovements).values({
+      skuId: skuMatch.id,
+      fromLocation: "warehouse",
+      toLocation: null,
+      quantity: item.quantity,
+      reason: "sale",
+      referenceId: orderId,
+    }).run();
+
+    // Decrement warehouse inventory
+    const inv = db.select().from(inventory)
+      .where(and(eq(inventory.skuId, skuMatch.id), eq(inventory.location, "warehouse")))
+      .get();
+
+    if (inv) {
+      const newQty = Math.max(0, inv.quantity - item.quantity);
+      db.update(inventory).set({
+        quantity: newQty,
+        needsReorder: newQty < inv.reorderPoint,
+        updatedAt: new Date().toISOString(),
+      }).where(eq(inventory.id, inv.id)).run();
+    }
+  }
+}
+
 // ── Webhook Handlers ──
 
 async function handleOrderCreate(order: ShopifyOrder) {
   const existing = db.select().from(orders).where(eq(orders.externalId, String(order.id))).get();
   if (existing) return; // idempotent
 
-  const companyId = await findCompanyByOrder(order);
+  const companyId = await findOrCreateCompany(order);
   const channel = detectChannel(order);
   const shipping = order.total_shipping_price_set?.shop_money?.amount
     ? parseFloat(order.total_shipping_price_set.shop_money.amount) : 0;
@@ -158,6 +222,15 @@ async function handleOrderCreate(order: ShopifyOrder) {
   }).returning().get();
 
   await mapLineItems(newOrder.id, order.line_items);
+
+  // Auto-create customer account for the company
+  if (companyId) {
+    try {
+      ensureCustomerAccount(companyId);
+    } catch (e) {
+      console.error("[Shopify Webhook] ensureCustomerAccount error:", e);
+    }
+  }
 
   eventBus.emit("order.created", {
     orderId: newOrder.id,
@@ -183,26 +256,15 @@ async function handleOrderUpdated(order: ShopifyOrder) {
     notes: order.note || existing.notes,
     updatedAt: new Date().toISOString(),
   }).where(eq(orders.id, existing.id)).run();
-}
 
-async function handleOrderFulfilled(order: ShopifyOrder) {
-  const existing = db.select().from(orders).where(eq(orders.externalId, String(order.id))).get();
-  if (!existing) return;
-
-  const fulfillment = order.fulfillments?.[0];
-  db.update(orders).set({
-    status: "shipped",
-    trackingNumber: fulfillment?.tracking_number || null,
-    trackingCarrier: fulfillment?.tracking_company || null,
-    shippedAt: fulfillment?.created_at || new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  }).where(eq(orders.id, existing.id)).run();
-
-  eventBus.emit("order.shipped", {
-    orderId: existing.id,
-    trackingNumber: fulfillment?.tracking_number,
-    carrier: fulfillment?.tracking_company,
-  });
+  // Refresh customer account stats if company is linked
+  if (existing.companyId) {
+    try {
+      ensureCustomerAccount(existing.companyId);
+    } catch (e) {
+      console.error("[Shopify Webhook] ensureCustomerAccount error:", e);
+    }
+  }
 }
 
 async function handleOrderCancelled(order: ShopifyOrder) {
@@ -213,13 +275,47 @@ async function handleOrderCancelled(order: ShopifyOrder) {
     status: "cancelled",
     updatedAt: new Date().toISOString(),
   }).where(eq(orders.id, existing.id)).run();
+
+  // Refresh customer stats (cancelled orders excluded from LTV)
+  if (existing.companyId) {
+    try {
+      ensureCustomerAccount(existing.companyId);
+    } catch (e) {
+      console.error("[Shopify Webhook] ensureCustomerAccount error:", e);
+    }
+  }
+}
+
+async function handleFulfillmentCreate(fulfillment: ShopifyFulfillment) {
+  // Find the order by Shopify order_id
+  const existing = db.select().from(orders)
+    .where(eq(orders.externalId, String(fulfillment.order_id)))
+    .get();
+  if (!existing) return;
+
+  // Update order with tracking info
+  db.update(orders).set({
+    status: "shipped",
+    trackingNumber: fulfillment.tracking_number || null,
+    trackingCarrier: fulfillment.tracking_company || null,
+    shippedAt: fulfillment.created_at || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }).where(eq(orders.id, existing.id)).run();
+
+  // Create inventory movements for fulfilled items
+  createInventoryMovements(fulfillment, existing.id);
+
+  eventBus.emit("order.shipped", {
+    orderId: existing.id,
+    trackingNumber: fulfillment.tracking_number || undefined,
+    carrier: fulfillment.tracking_company || undefined,
+  });
 }
 
 // ── Register with Webhook Infrastructure ──
 
 webhookRegistry.register("shopify", async (payload) => {
   const topic = payload.headers["x-shopify-topic"];
-  const order = payload.parsedBody as ShopifyOrder;
 
   // Verify HMAC if secret is configured
   const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
@@ -231,21 +327,56 @@ webhookRegistry.register("shopify", async (payload) => {
   }
 
   switch (topic) {
-    case "orders/create":
+    case "orders/create": {
+      const order = payload.parsedBody as ShopifyOrder;
       await handleOrderCreate(order);
       break;
-    case "orders/updated":
+    }
+    case "orders/updated": {
+      const order = payload.parsedBody as ShopifyOrder;
       await handleOrderUpdated(order);
       break;
-    case "orders/fulfilled":
-      await handleOrderFulfilled(order);
-      break;
-    case "orders/cancelled":
+    }
+    case "orders/cancelled": {
+      const order = payload.parsedBody as ShopifyOrder;
       await handleOrderCancelled(order);
       break;
+    }
+    case "fulfillments/create": {
+      const fulfillment = payload.parsedBody as ShopifyFulfillment;
+      await handleFulfillmentCreate(fulfillment);
+      break;
+    }
     default:
       return { ok: true, message: `Unhandled topic: ${topic}` };
   }
 
-  return { ok: true, message: `Processed ${topic} for order ${order.name}` };
+  const name = (payload.parsedBody as { name?: string; order_id?: number }).name
+    || (payload.parsedBody as { order_id?: number }).order_id
+    || "unknown";
+  return { ok: true, message: `Processed ${topic} for ${name}` };
 });
+
+// ── Webhook Registration Guide ──
+// 
+// Register these webhooks in Shopify Admin → Settings → Notifications → Webhooks:
+//
+// | Topic                | URL                                                  |
+// |----------------------|------------------------------------------------------|
+// | orders/create        | https://<your-domain>/api/webhooks/shopify            |
+// | orders/updated       | https://<your-domain>/api/webhooks/shopify            |
+// | orders/cancelled     | https://<your-domain>/api/webhooks/shopify            |
+// | fulfillments/create  | https://<your-domain>/api/webhooks/shopify            |
+//
+// Set format to JSON. Set SHOPIFY_WEBHOOK_SECRET env var to the webhook signing secret.
+//
+// Or register programmatically via Shopify Admin API:
+//
+//   POST /admin/api/2024-01/webhooks.json
+//   {
+//     "webhook": {
+//       "topic": "orders/create",
+//       "address": "https://<your-domain>/api/webhooks/shopify",
+//       "format": "json"
+//     }
+//   }

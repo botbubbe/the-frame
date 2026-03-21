@@ -22,6 +22,14 @@ interface AccountData {
   notes: string | null;
 }
 
+interface ChurnRiskData {
+  healthScore: number;
+  healthStatus: string;
+  riskFactors: string[];
+  recommendation: string;
+  daysSinceLastOrder: number | null;
+}
+
 interface ReorderPrediction {
   accountId: string;
   companyName: string;
@@ -59,22 +67,61 @@ interface HealthHistoryRow {
 const formatCurrency = (v: number) => `$${v.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
 const formatDate = (d: string | null) => d ? new Date(d).toLocaleDateString() : "—";
 
+const RETENTION_ACTIONS: Record<string, { icon: string; actions: string[] }> = {
+  churned: {
+    icon: "⚫",
+    actions: [
+      "Launch win-back campaign with incentive (15-20% discount)",
+      "Personal call from account manager to understand why they left",
+      "Send product updates highlighting new features since their last order",
+      "Offer free samples of new collection",
+    ],
+  },
+  churning: {
+    icon: "🔴",
+    actions: [
+      "Immediate personal outreach — call or email within 24h",
+      "Understand blockers: product issues, pricing, competition?",
+      "Offer tailored reorder package with volume discount",
+      "Schedule quarterly business review to re-engage",
+    ],
+  },
+  at_risk: {
+    icon: "🟡",
+    actions: [
+      "Send reorder reminder with special seasonal offer",
+      "Share bestseller data and trend insights for their market",
+      "Offer early access to upcoming collection",
+      "Check if payment terms need adjustment",
+    ],
+  },
+  healthy: {
+    icon: "🟢",
+    actions: [],
+  },
+};
+
 export function CustomerDetail({
   account,
   recentOrders,
   activities,
   healthHistory,
   reorderPrediction,
+  churnRisk,
 }: {
   account: AccountData;
   recentOrders: OrderRow[];
   activities: ActivityRow[];
   healthHistory: HealthHistoryRow[];
   reorderPrediction?: ReorderPrediction | null;
+  churnRisk?: ChurnRiskData | null;
 }) {
   const daysUntilReorder = account.next_reorder_estimate
     ? Math.ceil((new Date(account.next_reorder_estimate).getTime() - Date.now()) / 86400000)
     : null;
+
+  const retentionInfo = RETENTION_ACTIONS[account.health_status] || RETENTION_ACTIONS.healthy;
+  const isAtRisk = account.health_status !== "healthy";
 
   return (
     <div className="space-y-6">
@@ -92,7 +139,7 @@ export function CustomerDetail({
               {TIER_LABELS[account.tier]}
             </span>
             <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${HEALTH_COLORS[account.health_status]}`}>
-              {account.health_score} — {account.health_status.replace("_", " ")}
+              {retentionInfo.icon} {account.health_score} — {account.health_status.replace("_", " ")}
             </span>
             {account.company_email && (
               <span className="text-xs text-gray-500">✉ {account.company_email}</span>
@@ -103,6 +150,52 @@ export function CustomerDetail({
           </div>
         </div>
       </div>
+
+      {/* Churn Risk Alert */}
+      {isAtRisk && (
+        <div className={`rounded-lg border-l-4 p-4 ${
+          account.health_status === "churned" ? "border-gray-800 bg-gray-50" :
+          account.health_status === "churning" ? "border-red-500 bg-red-50" :
+          "border-yellow-500 bg-yellow-50"
+        }`}>
+          <div className="flex items-start gap-3">
+            <span className="text-2xl">{retentionInfo.icon}</span>
+            <div className="flex-1">
+              <h3 className="font-semibold text-sm">
+                {account.health_status === "churned" ? "Churned Account" :
+                 account.health_status === "churning" ? "High Churn Risk" :
+                 "At Risk — Action Needed"}
+              </h3>
+              {churnRisk && churnRisk.riskFactors.length > 0 && (
+                <div className="mt-1">
+                  <p className="text-sm text-gray-600">Risk factors:</p>
+                  <ul className="list-disc list-inside text-sm text-gray-700 mt-1">
+                    {churnRisk.riskFactors.map((f, i) => <li key={i}>{f}</li>)}
+                  </ul>
+                </div>
+              )}
+              {churnRisk?.recommendation && (
+                <p className="text-sm font-medium mt-2">💡 {churnRisk.recommendation}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Retention Actions */}
+      {isAtRisk && retentionInfo.actions.length > 0 && (
+        <div className="rounded-lg border bg-white p-4">
+          <h2 className="font-semibold mb-3">🎯 Suggested Retention Actions</h2>
+          <div className="grid md:grid-cols-2 gap-2">
+            {retentionInfo.actions.map((action, i) => (
+              <div key={i} className="flex items-start gap-2 p-2 rounded bg-gray-50">
+                <span className="text-sm font-bold text-gray-400">{i + 1}.</span>
+                <p className="text-sm">{action}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Overview Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">

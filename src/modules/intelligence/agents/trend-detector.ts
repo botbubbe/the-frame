@@ -1,27 +1,206 @@
 /**
  * Trend Detector Agent
- * Identifies trending products, declining products, and dead stock.
+ * Analyzes order data to detect emerging/declining product trends,
+ * seasonal patterns, and momentum scores.
  */
 
-export interface TrendData {
-  trending_up: { sku: string; name: string; change_pct: number }[];
-  trending_down: { sku: string; name: string; change_pct: number }[];
-  dead_stock: { sku: string; name: string; days_since_sale: number }[];
+import { db } from "@/lib/db";
+import { orders, orderItems } from "@/modules/orders/schema";
+import { sql, gte, and, ne } from "drizzle-orm";
+
+export interface ProductTrend {
+  sku: string;
+  skuId: string | null;
+  productName: string;
+  colorName: string | null;
+  currentPeriodUnits: number;
+  priorPeriodUnits: number;
+  currentPeriodRevenue: number;
+  priorPeriodRevenue: number;
+  growthRate: number; // percentage
+  momentumScore: number; // -100 to 100
+  direction: "up" | "down" | "flat";
 }
 
-export function detectTrends(): TrendData {
-  // TODO: Wire to real sell-through data
+export interface ChannelTrend {
+  channel: string;
+  currentPeriodOrders: number;
+  priorPeriodOrders: number;
+  currentPeriodRevenue: number;
+  priorPeriodRevenue: number;
+  growthRate: number;
+}
+
+export interface SeasonalPattern {
+  month: number;
+  monthName: string;
+  avgOrders: number;
+  avgRevenue: number;
+}
+
+export interface TrendData {
+  trending_up: ProductTrend[];
+  trending_down: ProductTrend[];
+  flat: ProductTrend[];
+  dead_stock: { sku: string; name: string; days_since_sale: number }[];
+  channel_trends: ChannelTrend[];
+  seasonal_patterns: SeasonalPattern[];
+  periodDays: number;
+  generatedAt: string;
+}
+
+/**
+ * Detect trends by comparing current period vs prior period.
+ * @param periodDays Number of days per period (default 30)
+ */
+export function detectTrends(periodDays = 30): TrendData {
+  const now = new Date();
+  const currentStart = new Date(now.getTime() - periodDays * 86400000);
+  const priorStart = new Date(currentStart.getTime() - periodDays * 86400000);
+
+  const currentStartStr = currentStart.toISOString().slice(0, 10);
+  const priorStartStr = priorStart.toISOString().slice(0, 10);
+  const nowStr = now.toISOString().slice(0, 10);
+
+  // ── Product trends: compare current vs prior period per SKU ──
+  const productData = db.all<{
+    sku: string;
+    sku_id: string | null;
+    product_name: string;
+    color_name: string | null;
+    current_units: number;
+    prior_units: number;
+    current_revenue: number;
+    prior_revenue: number;
+  }>(sql`
+    SELECT
+      oi.sku,
+      oi.sku_id,
+      oi.product_name,
+      oi.color_name,
+      COALESCE(SUM(CASE WHEN o.placed_at >= ${currentStartStr} THEN oi.quantity ELSE 0 END), 0) AS current_units,
+      COALESCE(SUM(CASE WHEN o.placed_at >= ${priorStartStr} AND o.placed_at < ${currentStartStr} THEN oi.quantity ELSE 0 END), 0) AS prior_units,
+      COALESCE(SUM(CASE WHEN o.placed_at >= ${currentStartStr} THEN oi.total_price ELSE 0 END), 0) AS current_revenue,
+      COALESCE(SUM(CASE WHEN o.placed_at >= ${priorStartStr} AND o.placed_at < ${currentStartStr} THEN oi.total_price ELSE 0 END), 0) AS prior_revenue
+    FROM order_items oi
+    JOIN orders o ON o.id = oi.order_id
+    WHERE o.placed_at >= ${priorStartStr}
+      AND o.status NOT IN ('cancelled', 'returned')
+    GROUP BY oi.sku
+    ORDER BY current_units DESC
+  `);
+
+  const allTrends: ProductTrend[] = productData.map((row) => {
+    const growthRate = row.prior_units > 0
+      ? ((row.current_units - row.prior_units) / row.prior_units) * 100
+      : row.current_units > 0 ? 100 : 0;
+
+    // Momentum: weighted score factoring volume + growth
+    const volumeWeight = Math.min(row.current_units / 10, 1); // normalize to max ~10 units
+    const momentumScore = Math.round(Math.max(-100, Math.min(100, growthRate * volumeWeight)));
+
+    const direction: "up" | "down" | "flat" =
+      growthRate > 5 ? "up" : growthRate < -5 ? "down" : "flat";
+
+    return {
+      sku: row.sku || "unknown",
+      skuId: row.sku_id,
+      productName: row.product_name,
+      colorName: row.color_name,
+      currentPeriodUnits: row.current_units,
+      priorPeriodUnits: row.prior_units,
+      currentPeriodRevenue: row.current_revenue,
+      priorPeriodRevenue: row.prior_revenue,
+      growthRate: Math.round(growthRate * 10) / 10,
+      momentumScore,
+      direction,
+    };
+  });
+
+  const trending_up = allTrends.filter((t) => t.direction === "up").sort((a, b) => b.growthRate - a.growthRate);
+  const trending_down = allTrends.filter((t) => t.direction === "down").sort((a, b) => a.growthRate - b.growthRate);
+  const flat = allTrends.filter((t) => t.direction === "flat");
+
+  // ── Dead stock: SKUs with no sales in the period ──
+  const deadStockData = db.all<{ sku: string; product_name: string; days_since: number }>(sql`
+    SELECT
+      oi.sku,
+      oi.product_name,
+      CAST(julianday('now') - julianday(MAX(o.placed_at)) AS INTEGER) AS days_since
+    FROM order_items oi
+    JOIN orders o ON o.id = oi.order_id
+    WHERE o.status NOT IN ('cancelled', 'returned')
+    GROUP BY oi.sku
+    HAVING days_since > ${periodDays}
+    ORDER BY days_since DESC
+  `);
+
+  const dead_stock = deadStockData.map((r) => ({
+    sku: r.sku || "unknown",
+    name: r.product_name,
+    days_since_sale: r.days_since,
+  }));
+
+  // ── Channel trends ──
+  const channelData = db.all<{
+    channel: string;
+    current_orders: number;
+    prior_orders: number;
+    current_revenue: number;
+    prior_revenue: number;
+  }>(sql`
+    SELECT
+      channel,
+      COALESCE(SUM(CASE WHEN placed_at >= ${currentStartStr} THEN 1 ELSE 0 END), 0) AS current_orders,
+      COALESCE(SUM(CASE WHEN placed_at >= ${priorStartStr} AND placed_at < ${currentStartStr} THEN 1 ELSE 0 END), 0) AS prior_orders,
+      COALESCE(SUM(CASE WHEN placed_at >= ${currentStartStr} THEN total ELSE 0 END), 0) AS current_revenue,
+      COALESCE(SUM(CASE WHEN placed_at >= ${priorStartStr} AND placed_at < ${currentStartStr} THEN total ELSE 0 END), 0) AS prior_revenue
+    FROM orders
+    WHERE placed_at >= ${priorStartStr}
+      AND status NOT IN ('cancelled', 'returned')
+    GROUP BY channel
+  `);
+
+  const channel_trends: ChannelTrend[] = channelData.map((r) => ({
+    channel: r.channel,
+    currentPeriodOrders: r.current_orders,
+    priorPeriodOrders: r.prior_orders,
+    currentPeriodRevenue: r.current_revenue,
+    priorPeriodRevenue: r.prior_revenue,
+    growthRate: r.prior_orders > 0
+      ? Math.round(((r.current_orders - r.prior_orders) / r.prior_orders) * 1000) / 10
+      : r.current_orders > 0 ? 100 : 0,
+  }));
+
+  // ── Seasonal patterns (monthly averages from all history) ──
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const seasonalData = db.all<{ month: number; avg_orders: number; avg_revenue: number }>(sql`
+    SELECT
+      CAST(strftime('%m', placed_at) AS INTEGER) AS month,
+      CAST(COUNT(*) AS REAL) / MAX(1, COUNT(DISTINCT strftime('%Y', placed_at))) AS avg_orders,
+      CAST(SUM(total) AS REAL) / MAX(1, COUNT(DISTINCT strftime('%Y', placed_at))) AS avg_revenue
+    FROM orders
+    WHERE status NOT IN ('cancelled', 'returned')
+      AND placed_at IS NOT NULL
+    GROUP BY month
+    ORDER BY month
+  `);
+
+  const seasonal_patterns: SeasonalPattern[] = seasonalData.map((r) => ({
+    month: r.month,
+    monthName: monthNames[r.month - 1] || `M${r.month}`,
+    avgOrders: Math.round(r.avg_orders),
+    avgRevenue: Math.round(r.avg_revenue),
+  }));
+
   return {
-    trending_up: [
-      { sku: "JX1001-BLK", name: "Golden Hour", change_pct: 18.5 },
-      { sku: "JX1003-TRT", name: "Midnight Drive", change_pct: 12.3 },
-    ],
-    trending_down: [
-      { sku: "JX2002-BLU", name: "Ocean Blue", change_pct: -15.2 },
-      { sku: "JX4003-PNK", name: "Rose Garden", change_pct: -28.4 },
-    ],
-    dead_stock: [
-      { sku: "JX1008-GRN", name: "Forest Walk", days_since_sale: 67 },
-    ],
+    trending_up,
+    trending_down,
+    flat,
+    dead_stock,
+    channel_trends,
+    seasonal_patterns,
+    periodDays,
+    generatedAt: now.toISOString(),
   };
 }

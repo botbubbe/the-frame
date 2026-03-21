@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   XCircle,
   ArrowUpDown,
+  RefreshCw,
 } from "lucide-react";
 import { CreateOrderDialog } from "@/modules/orders/components/create-order-dialog";
 
@@ -141,6 +142,7 @@ function OrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<OrderDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [syncingFaire, setSyncingFaire] = useState(false);
 
   // Filters
   const page = parseInt(searchParams.get("page") || "1");
@@ -214,13 +216,39 @@ function OrdersPage() {
           <h1 className="text-2xl font-bold">Orders</h1>
           <p className="text-sm text-muted-foreground">{total} orders total</p>
         </div>
-        <button
-          onClick={() => setShowCreateDialog(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90"
-        >
-          <Plus className="h-4 w-4" />
-          Create Order
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={async () => {
+              setSyncingFaire(true);
+              try {
+                const res = await fetch("/api/v1/orders/faire-sync", { method: "POST" });
+                const data = await res.json();
+                if (data.ok) {
+                  alert(`${data.message}`);
+                  fetchOrders();
+                } else {
+                  alert(`Faire sync error: ${data.error || "Unknown error"}`);
+                }
+              } catch (e) {
+                alert("Faire sync failed");
+              } finally {
+                setSyncingFaire(false);
+              }
+            }}
+            disabled={syncingFaire}
+            className="inline-flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-medium hover:bg-muted disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${syncingFaire ? "animate-spin" : ""}`} />
+            {syncingFaire ? "Syncing..." : "Sync Faire"}
+          </button>
+          <button
+            onClick={() => setShowCreateDialog(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90"
+          >
+            <Plus className="h-4 w-4" />
+            Create Order
+          </button>
+        </div>
       </div>
 
       {/* Search & Filters */}
