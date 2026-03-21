@@ -23,7 +23,7 @@ export function ChatPanel() {
       id: "welcome",
       role: "assistant",
       content:
-        "Hi! I'm The Frame AI assistant. Full chat capabilities are coming in Phase 10. For now, I can help you navigate — try typing \"go to catalog\" or \"help\".",
+        "Hi! I'm The Frame AI assistant. Ask me anything — try \"how many prospects do we have?\", \"show pipeline value\", or type \"help\" for more.",
       timestamp: new Date(),
     },
   ]);
@@ -35,7 +35,9 @@ export function ChatPanel() {
     }
   }, [messages]);
 
-  function handleSend() {
+  const [loading, setLoading] = useState(false);
+
+  async function handleSend() {
     const text = input.trim();
     if (!text) return;
 
@@ -45,15 +47,12 @@ export function ChatPanel() {
       content: text,
       timestamp: new Date(),
     };
+    setMessages((prev) => [...prev, userMsg]);
+    setInput("");
 
-    // Generate stub response
-    let response = "Chat coming in Phase 10. I'm just a scaffold for now! 🏗️";
-
+    // Handle navigation locally
     const lower = text.toLowerCase();
-    if (lower === "help") {
-      response =
-        "Available commands:\n• \"go to [page]\" — navigate to a module\n• \"help\" — show this message\n\nFull AI capabilities coming in Phase 10!";
-    } else if (lower.startsWith("go to ")) {
+    if (lower.startsWith("go to ")) {
       const page = lower.replace("go to ", "").trim();
       const routes: Record<string, string> = {
         dashboard: "/dashboard",
@@ -68,24 +67,37 @@ export function ChatPanel() {
         settings: "/settings",
       };
       if (routes[page]) {
-        response = `Navigating to ${page}...`;
-        setTimeout(() => {
-          window.location.href = routes[page];
-        }, 500);
-      } else {
-        response = `Unknown page: "${page}". Try: dashboard, prospects, pipeline, campaigns, orders, catalog, inventory, finance, ai, settings.`;
+        setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: `Navigating to ${page}...`, timestamp: new Date() }]);
+        setTimeout(() => { window.location.href = routes[page]; }, 500);
+        return;
       }
     }
 
-    const assistantMsg: Message = {
-      id: crypto.randomUUID(),
-      role: "assistant",
-      content: response,
-      timestamp: new Date(),
-    };
-
-    setMessages((prev) => [...prev, userMsg, assistantMsg]);
-    setInput("");
+    // Call backend chat API
+    setLoading(true);
+    try {
+      const res = await fetch("/api/v1/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text }),
+      });
+      const data = await res.json();
+      setMessages((prev) => [...prev, {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: data.response || "No response",
+        timestamp: new Date(),
+      }]);
+    } catch {
+      setMessages((prev) => [...prev, {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: "⚠️ Failed to connect. Is the server running?",
+        timestamp: new Date(),
+      }]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -162,7 +174,7 @@ export function ChatPanel() {
                 placeholder="Type a message..."
                 className="flex-1"
               />
-              <Button type="submit" size="icon" disabled={!input.trim()}>
+              <Button type="submit" size="icon" disabled={!input.trim() || loading}>
                 <Send className="h-4 w-4" />
               </Button>
             </form>

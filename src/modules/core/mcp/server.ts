@@ -85,6 +85,27 @@ registerInventoryMcpTools();
 import { registerFinanceMcpTools } from "@/modules/finance/mcp/tools";
 registerFinanceMcpTools();
 
+// Register marketing tools (array-style registration)
+import { marketingMcpTools } from "@/modules/marketing/mcp/tools";
+for (const tool of marketingMcpTools) {
+  mcpRegistry["tools"].set(tool.name, tool);
+}
+
+// Register intelligence tools (array-style registration)
+import { intelligenceMcpTools } from "@/modules/intelligence/mcp/tools";
+for (const tool of intelligenceMcpTools) {
+  mcpRegistry["tools"].set(tool.name, tool);
+}
+
+// Register sales tools (imported for side-effects)
+import "@/modules/sales/mcp/tools";
+// Register catalog tools (imported for side-effects)
+import "@/modules/catalog/mcp/tools";
+// Register customer tools (imported for side-effects)
+import "@/modules/customers/mcp/tools";
+// Register order tools (imported for side-effects)
+import "@/modules/orders/mcp/tools";
+
 // ── Register Phase 0 system tools ──
 
 mcpRegistry.register(

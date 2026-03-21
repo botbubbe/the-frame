@@ -115,7 +115,23 @@ export const intelligenceMcpTools: McpTool[] = [
     description: "Get geographic analysis — prospects, orders, revenue by state",
     inputSchema: { type: "object", properties: {} },
     handler: async () => {
-      return { content: [{ type: "text", text: "Geographic analysis — wire to real sales + orders modules" }] };
+      const { sqlite } = await import("@/lib/db");
+      const prospectsByState = sqlite.prepare(`
+        SELECT state, COUNT(*) as prospect_count, 
+               SUM(CASE WHEN status = 'customer' THEN 1 ELSE 0 END) as customer_count,
+               ROUND(AVG(icp_score), 1) as avg_icp
+        FROM companies WHERE state IS NOT NULL AND state != ''
+        GROUP BY state ORDER BY prospect_count DESC LIMIT 20
+      `).all();
+      const revenueByState = sqlite.prepare(`
+        SELECT c.state, COUNT(DISTINCT o.id) as order_count, 
+               ROUND(SUM(o.total), 2) as total_revenue
+        FROM orders o
+        JOIN companies c ON o.company_id = c.id
+        WHERE c.state IS NOT NULL AND c.state != ''
+        GROUP BY c.state ORDER BY total_revenue DESC LIMIT 20
+      `).all();
+      return { content: [{ type: "text", text: JSON.stringify({ prospectsByState, revenueByState }, null, 2) }] };
     },
   },
 ];
