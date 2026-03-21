@@ -35,9 +35,23 @@ const moduleTitles: Record<string, string> = {
 
 export function AppHeader() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [unreadCount, setUnreadCount] = useState(0);
   const segments = pathname.split("/").filter(Boolean);
   const currentModule = segments[0] || "dashboard";
   const title = moduleTitles[currentModule] || currentModule;
+
+  useEffect(() => {
+    const fetchCount = () => {
+      fetch("/api/v1/notifications/count")
+        .then(r => r.ok ? r.json() : { unread: 0 })
+        .then(d => setUnreadCount(d.unread))
+        .catch(() => {});
+    };
+    fetchCount();
+    const interval = setInterval(fetchCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
@@ -84,8 +98,13 @@ export function AppHeader() {
             ⌘K
           </kbd>
         </Button>
-        <Button variant="ghost" size="icon" className="relative">
+        <Button variant="ghost" size="icon" className="relative" onClick={() => router.push("/notifications")}>
           <Bell className="h-4 w-4" />
+          {unreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
         </Button>
       </div>
     </header>
