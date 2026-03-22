@@ -26,6 +26,9 @@ export async function POST() {
       'companies', 'users',
     ];
 
+    // Ensure enrichment_status column exists (may be missing from older migrations)
+    try { sqlite.exec("ALTER TABLE companies ADD COLUMN enrichment_status TEXT DEFAULT 'none'"); } catch { /* already exists */ }
+
     const clearAll = sqlite.transaction(() => {
       for (const t of tables) {
         try { sqlite.exec(`DELETE FROM "${t}"`); } catch { /* table may not exist */ }

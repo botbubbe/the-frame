@@ -5,15 +5,15 @@ test.describe("Smoke Tests", () => {
     // Navigate to login
     await page.goto("/login");
 
-    // Verify login page renders
-    await expect(page.locator("h1, h2, [data-testid='login-heading']")).toBeVisible();
-    await expect(page.getByLabel(/email/i)).toBeVisible();
-    await expect(page.getByLabel(/password/i)).toBeVisible();
+    // Verify login page renders (CardTitle is a div, not h1/h2)
+    await expect(page.getByText("The Frame")).toBeVisible();
+    await expect(page.locator('#email')).toBeVisible();
+    await expect(page.locator('#password')).toBeVisible();
 
     // Login with test credentials
-    await page.getByLabel(/email/i).fill("daniel@getjaxy.com");
-    await page.getByLabel(/password/i).fill("password123");
-    await page.getByRole("button", { name: /sign in|log in/i }).click();
+    await page.locator('#email').fill("daniel@getjaxy.com");
+    await page.locator('#password').fill("jaxy2026!");
+    await page.locator('button[type="submit"]').click();
 
     // Verify dashboard loads
     await page.waitForURL("**/dashboard**", { timeout: 10_000 });
