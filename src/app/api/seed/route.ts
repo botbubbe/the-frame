@@ -33,6 +33,8 @@ export async function POST() {
       for (const t of tables) {
         try { sqlite.exec(`DELETE FROM "${t}"`); } catch { /* table may not exist */ }
       }
+      // Clear FTS tables if they exist
+      try { sqlite.exec(`DELETE FROM companies_fts`); } catch { /* may not exist */ }
     });
     clearAll();
 
@@ -123,12 +125,12 @@ export async function POST() {
     seedCompanies();
 
     // ── 10 Deals across pipeline stages ──
-    const dealStages = ['outreach', 'outreach', 'engaged', 'engaged', 'sample_sent', 'sample_sent', 'negotiation', 'negotiation', 'closed_won', 'closed_lost'];
+    const dealStages = ['outreach', 'outreach', 'contact_made', 'contact_made', 'interested', 'interested', 'order_placed', 'order_placed', 'interested_later', 'not_interested'];
     const insertDeal = sqlite.prepare(`INSERT INTO deals (id, company_id, store_id, contact_id, title, value, stage, channel, owner_id, last_activity_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     const insertDealActivity = sqlite.prepare(`INSERT INTO deal_activities (id, deal_id, company_id, type, description, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`);
 
     const dealIds: string[] = [];
-    const channels = ['direct', 'faire', 'shopify_wholesale', 'trade_show', 'referral'];
+    const channels = ['direct', 'faire', 'shopify', 'phone', 'other'];
     const seedDeals = sqlite.transaction(() => {
       for (let i = 0; i < 10; i++) {
         const dId = uid();
@@ -162,6 +164,8 @@ export async function POST() {
     const insertSku = sqlite.prepare(`INSERT INTO catalog_skus (id, product_id, sku, color_name, cost_price, wholesale_price, retail_price, in_stock, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     const insertInventory = sqlite.prepare(`INSERT INTO inventory (id, sku_id, location, quantity, reserved_quantity, reorder_point, sell_through_weekly, days_of_stock, needs_reorder, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
 
+    const insertImage = sqlite.prepare(`INSERT INTO catalog_images (id, sku_id, file_path, position, alt_text, status, is_best, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+
     const productIds: string[] = [];
     const skuIds: string[] = [];
     const seedCatalog = sqlite.transaction(() => {
@@ -173,17 +177,18 @@ export async function POST() {
           'sunglasses', p.shape, p.material, p.gender,
           7.00, 14.00, 25.00, 'active', daysAgo(60), now);
 
-        for (const color of p.colors) {
+        for (let ci = 0; ci < p.colors.length; ci++) {
+          const color = p.colors[ci];
           const skuId = uid();
           skuIds.push(skuId);
           const sku = `${p.prefix}-${color}`;
           insertSku.run(skuId, pId, sku, colorNames[color] || color, 3.50, 7.00, 14.00, 1, 'active', daysAgo(60));
 
-          const qty = Math.floor(Math.random() * 400) + 50;
-          const reserved = Math.floor(Math.random() * 30);
-          const weekly = +(Math.random() * 15 + 2).toFixed(1);
-          const dosVal = +(qty / Math.max(weekly, 0.1)).toFixed(0);
-          insertInventory.run(uid(), skuId, 'warehouse', qty, reserved, 50, weekly, dosVal, qty < 60 ? 1 : 0, daysAgo(30), now);
+          // Add 2 images for the first 2 colorways of each product
+          if (ci < 2) {
+            insertImage.run(uid(), skuId, `/images/catalog/${sku}-front.jpg`, 0, `${p.name} ${colorNames[color] || color} - Front`, 'approved', 1, daysAgo(55));
+            insertImage.run(uid(), skuId, `/images/catalog/${sku}-angle.jpg`, 1, `${p.name} ${colorNames[color] || color} - Angle`, 'approved', 0, daysAgo(55));
+          }
         }
       }
     });
@@ -191,7 +196,7 @@ export async function POST() {
 
     // ── 5 Orders with line items ──
     const orderChannels = ['shopify_dtc', 'faire', 'shopify_wholesale', 'direct', 'amazon'];
-    const orderStatuses = ['fulfilled', 'shipped', 'pending', 'fulfilled', 'processing'];
+    const orderStatuses = ['delivered', 'shipped', 'pending', 'delivered', 'confirmed'];
     const insertOrder = sqlite.prepare(`INSERT INTO orders (id, order_number, company_id, store_id, contact_id, channel, status, subtotal, discount, shipping, tax, total, placed_at, shipped_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     const insertOrderItem = sqlite.prepare(`INSERT INTO order_items (id, order_id, sku_id, sku, product_name, color_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
 
@@ -458,7 +463,7 @@ export async function POST() {
     for (const t of ['users', 'companies', 'stores', 'contacts', 'deals', 'orders', 'order_items',
       'inventory', 'inventory_purchase_orders', 'expenses', 'settlements', 'marketing_content_calendar',
       'marketing_seo_keywords', 'marketing_ad_campaigns', 'marketing_influencers', 'notifications',
-      'customer_accounts', 'account_health_history', 'activity_feed', 'catalog_products', 'catalog_skus']) {
+      'customer_accounts', 'account_health_history', 'activity_feed', 'catalog_products', 'catalog_skus', 'catalog_images']) {
       try { counts[t] = (sqlite.prepare(`SELECT COUNT(*) as c FROM "${t}"`).get() as any).c; } catch { counts[t] = 0; }
     }
 

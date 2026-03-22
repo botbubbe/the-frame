@@ -346,7 +346,7 @@ export default function DashboardPage() {
                         <p className="text-gray-700 dark:text-gray-300 capitalize">{description}</p>
                         <p className="text-xs text-gray-400 flex items-center gap-1">
                           <Clock className="w-3 h-3" />
-                          {a.created_at ? new Date(a.created_at + "Z").toLocaleString() : "—"}
+                          {a.created_at ? new Date(a.created_at).toLocaleString() : "—"}
                         </p>
                       </div>
                     </div>
