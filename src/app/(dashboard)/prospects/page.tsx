@@ -1031,6 +1031,173 @@ function ProspectsPage() {
         </>
       )}
 
+      {/* Side Drawer */}
+      {drawerProspectId && (
+        <>
+          {/* Backdrop */}
+          <div
+            className={`fixed inset-0 bg-black/30 z-40 transition-opacity duration-300 ${drawerOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+            onClick={closeDrawer}
+          />
+          {/* Drawer panel */}
+          <div className={`fixed top-0 right-0 h-full w-[430px] bg-white dark:bg-gray-800 shadow-2xl z-50 transform transition-transform duration-300 ${drawerOpen ? "translate-x-0" : "translate-x-full"} flex flex-col`}>
+            {drawerLoading ? (
+              <div className="flex-1 flex items-center justify-center text-gray-400">
+                <div className="animate-spin w-6 h-6 border-2 border-gray-300 border-t-blue-600 rounded-full" />
+              </div>
+            ) : drawerData?.company ? (
+              <>
+                {/* Drawer Header */}
+                <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-start justify-between">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
+                      {String(drawerData.company.name || "?").charAt(0)}
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-gray-900 dark:text-white truncate">{String(drawerData.company.name)}</h3>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium mt-1 ${
+                        drawerData.company.status === "qualified" ? "bg-green-100 text-green-800" :
+                        drawerData.company.status === "contacted" ? "bg-blue-100 text-blue-800" :
+                        drawerData.company.status === "rejected" ? "bg-red-100 text-red-800" :
+                        drawerData.company.status === "customer" ? "bg-purple-100 text-purple-800" : "bg-gray-100 text-gray-600"
+                      }`}>{statusLabels[String(drawerData.company.status)] || String(drawerData.company.status)}</span>
+                    </div>
+                  </div>
+                  <button onClick={closeDrawer} className="text-gray-400 hover:text-gray-600 p-1">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Drawer Body */}
+                <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+                  {/* Website / Google Search */}
+                  {drawerData.company.website ? (
+                    <div className="flex items-center justify-between">
+                      <a href={String(drawerData.company.website).startsWith("http") ? String(drawerData.company.website) : `https://${drawerData.company.website}`}
+                        target="_blank" className="flex items-center gap-2 text-sm text-blue-600 hover:underline">
+                        <Globe className="w-4 h-4" /> {String(drawerData.company.domain || drawerData.company.website)}
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                      <a href={`https://www.google.com/search?q=${encodeURIComponent(`${drawerData.company.name} ${drawerData.company.city || ""} ${drawerData.company.state || ""}`.trim())}`}
+                        target="_blank" className="text-xs text-gray-400 hover:text-gray-600">Google it</a>
+                    </div>
+                  ) : (
+                    <a href={`https://www.google.com/search?q=${encodeURIComponent(`${drawerData.company.name} ${drawerData.company.city || ""} ${drawerData.company.state || ""}`.trim())}`}
+                      target="_blank"
+                      className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm text-blue-700 dark:text-blue-400 hover:bg-blue-100 font-medium">
+                      <Search className="w-4 h-4" /> Search Google
+                      <ExternalLink className="w-3 h-3 ml-auto" />
+                    </a>
+                  )}
+
+                  {/* Core Info */}
+                  <div className="space-y-3">
+                    {drawerData.company.email && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Mail className="w-4 h-4 text-gray-400" />
+                        <a href={`mailto:${drawerData.company.email}`} className="text-gray-700 dark:text-gray-300 hover:text-blue-600">{String(drawerData.company.email)}</a>
+                      </div>
+                    )}
+                    {drawerData.company.phone && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Phone className="w-4 h-4 text-gray-400" />
+                        <a href={`tel:${drawerData.company.phone}`} className="text-gray-700 dark:text-gray-300">{String(drawerData.company.phone)}</a>
+                      </div>
+                    )}
+                    {(drawerData.company.city || drawerData.company.state) && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <MapPin className="w-4 h-4 text-gray-400" />
+                        <span className="text-gray-700 dark:text-gray-300">
+                          {[drawerData.company.address, drawerData.company.city, drawerData.company.state, drawerData.company.zip].filter(Boolean).join(", ")}
+                        </span>
+                      </div>
+                    )}
+                    {drawerData.company.google_rating && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Star className="w-4 h-4 text-gray-400" />
+                        <span className="text-gray-700 dark:text-gray-300">
+                          {String(drawerData.company.google_rating)}★ ({String(drawerData.company.google_review_count || 0)} reviews)
+                        </span>
+                      </div>
+                    )}
+                    {drawerData.company.source && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Tag className="w-4 h-4 text-gray-400" />
+                        <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded">{String(drawerData.company.source).split("|")[0]}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ICP */}
+                  {drawerData.company.icp_score != null && (
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-sm font-bold ${
+                        drawerData.company.icp_tier === "A" ? "bg-green-500 text-white" :
+                        drawerData.company.icp_tier === "B" ? "bg-yellow-500 text-white" :
+                        drawerData.company.icp_tier === "C" ? "bg-orange-500 text-white" : "bg-gray-500 text-white"
+                      }`}>ICP {String(drawerData.company.icp_tier)} · {String(drawerData.company.icp_score)}</span>
+                    </div>
+                  )}
+
+                  {/* Tags */}
+                  {Array.isArray(drawerData.company.tags) && drawerData.company.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {(drawerData.company.tags as string[]).map((t: string) => (
+                        <span key={t} className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded-full">{t}</span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Contacts */}
+                  {drawerData.contacts && drawerData.contacts.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">Contacts ({drawerData.contacts.length})</h4>
+                      <div className="space-y-2">
+                        {drawerData.contacts.map((c, i) => (
+                          <div key={i} className="flex items-center gap-3 py-1.5 px-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                            <div className="w-7 h-7 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-[10px] font-medium shrink-0">
+                              {(c.first_name?.[0] || "?")}{(c.last_name?.[0] || "")}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                {[c.first_name, c.last_name].filter(Boolean).join(" ") || "Unknown"}
+                              </p>
+                              <div className="text-xs text-gray-500 flex items-center gap-2 truncate">
+                                {c.title && <span>{c.title}</span>}
+                                {c.email && <span>{c.email}</span>}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Notes preview */}
+                  {drawerData.company.notes && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-gray-500 uppercase mb-1">Notes</h4>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-3 whitespace-pre-wrap">{String(drawerData.company.notes)}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Drawer Footer */}
+                <div className="px-5 py-4 border-t border-gray-200 dark:border-gray-700">
+                  <button
+                    onClick={() => { closeDrawer(); router.push(`/prospects/${drawerProspectId}`); }}
+                    className="w-full px-4 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2">
+                    Open Full View <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">Failed to load</div>
+            )}
+          </div>
+        </>
+      )}
+
       {/* DataTable */}
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
         <div className="overflow-x-auto">

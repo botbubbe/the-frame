@@ -46,6 +46,10 @@ try {
   sqlite.exec("ALTER TABLE companies ADD COLUMN lead_source_detail TEXT");
 } catch { /* column already exists */ }
 
+try {
+  sqlite.exec("ALTER TABLE companies ADD COLUMN enrichment_status TEXT DEFAULT 'pending'");
+} catch { /* column already exists */ }
+
 // Auto-run migrations on startup (idempotent — safe to run every time)
 try {
   const migrationsFolder = path.join(process.cwd(), "drizzle", "migrations");
