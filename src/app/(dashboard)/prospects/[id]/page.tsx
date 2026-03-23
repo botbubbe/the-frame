@@ -7,7 +7,7 @@ import Link from "next/link";
 import {
   ArrowLeft, ArrowRight, Building2, Globe, Phone, Mail, MapPin, Tag, Star,
   Edit, UserPlus, MessageSquare, Clock, ExternalLink, Plus, Save, X,
-  Briefcase, Sparkles, Loader2, CheckCircle2, AlertCircle,
+  Briefcase, Sparkles, Loader2, CheckCircle2, AlertCircle, Search,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -346,6 +346,11 @@ export default function CompanyDetailPage() {
                 </a>
               )}
               {company.source && <span className="text-xs bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded">{company.source.split("|")[0]}</span>}
+              <a href={`https://www.google.com/search?q=${encodeURIComponent(`${company.name} ${company.city || ""} ${company.state || ""}`.trim())}`}
+                target="_blank"
+                className={`flex items-center gap-1 hover:underline ${company.website ? "text-gray-400 hover:text-gray-600" : "text-blue-600 font-medium"}`}>
+                <Search className="w-3.5 h-3.5" />{company.website ? "Google it" : "Search Google"}
+              </a>
             </div>
           </div>
         </div>
