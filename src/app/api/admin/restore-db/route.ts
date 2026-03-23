@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 
-const DB_PATH = process.env.DATABASE_URL || path.join(process.cwd(), "data", "the-frame.db");
+const DB_PATH = process.env.DATABASE_PATH || path.join(process.cwd(), "data", "the-frame.db");
 
 export async function POST(request: NextRequest) {
   const key = request.headers.get("x-admin-key");
