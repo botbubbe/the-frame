@@ -321,6 +321,11 @@ export default function InventoryPage() {
           <p className="text-muted-foreground text-sm">Stock levels, sell-through velocity, and reorder alerts</p>
         </div>
         <div className="flex items-center gap-2">
+          {lastSyncAt && (
+            <span className="text-xs text-muted-foreground mr-1">
+              Last sync: {new Date(lastSyncAt).toLocaleString()}
+            </span>
+          )}
           <Button
             variant="outline"
             className="gap-2"
