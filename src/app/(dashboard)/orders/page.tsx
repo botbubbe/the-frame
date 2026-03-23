@@ -382,7 +382,10 @@ function OrdersPage() {
       <CreateOrderDialog
         open={showCreateDialog}
         onClose={() => setShowCreateDialog(false)}
-        onCreated={() => fetchOrders()}
+        onCreated={(orderId) => {
+          fetchOrders();
+          if (orderId) router.push(`/orders/${orderId}`);
+        }}
       />
 
       {/* Order Detail Slide-over */}

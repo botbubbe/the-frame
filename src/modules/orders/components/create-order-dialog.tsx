@@ -53,7 +53,7 @@ export function CreateOrderDialog({
 }: {
   open: boolean;
   onClose: () => void;
-  onCreated: () => void;
+  onCreated: (orderId?: string) => void;
 }) {
   const [channel, setChannel] = useState("direct");
   const [paymentTerms, setPaymentTerms] = useState("");
@@ -203,10 +203,11 @@ export function CreateOrderDialog({
         }),
       });
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to create order");
+        const errData = await res.json();
+        throw new Error(errData.error || "Failed to create order");
       }
-      onCreated();
+      const created = await res.json();
+      onCreated(created.id);
       onClose();
       // Reset
       setItems([]);
