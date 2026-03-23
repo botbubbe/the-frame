@@ -178,8 +178,10 @@ export default function IntelligencePage() {
   const [health, setHealth] = useState<BusinessHealth | null>(null);
   const [reports, setReports] = useState<ReportData[]>([]);
   const [activeReport, setActiveReport] = useState<ReportData | null>(null);
-  const [loading, setLoading] = useState({ trends: false, health: false, report: false });
+  const [sellThrough, setSellThrough] = useState<SellThroughData | null>(null);
+  const [loading, setLoading] = useState({ trends: false, health: false, report: false, sellThrough: false });
   const [periodDays, setPeriodDays] = useState(30);
+  const [sellThroughSort, setSellThroughSort] = useState<"velocity" | "sellThrough" | "stock">("velocity");
 
   const loadHealth = useCallback(async () => {
     setLoading((l) => ({ ...l, health: true }));
@@ -198,6 +200,16 @@ export default function IntelligencePage() {
       setTrends(await res.json());
     } catch {} finally {
       setLoading((l) => ({ ...l, trends: false }));
+    }
+  }, [periodDays]);
+
+  const loadSellThrough = useCallback(async () => {
+    setLoading((l) => ({ ...l, sellThrough: true }));
+    try {
+      const res = await fetch(`/api/v1/inventory/sell-through?window=${periodDays}`);
+      setSellThrough(await res.json());
+    } catch {} finally {
+      setLoading((l) => ({ ...l, sellThrough: false }));
     }
   }, [periodDays]);
 
@@ -228,10 +240,11 @@ export default function IntelligencePage() {
   useEffect(() => {
     loadHealth();
     loadTrends();
+    loadSellThrough();
     loadReports();
-  }, [loadHealth, loadTrends, loadReports]);
+  }, [loadHealth, loadTrends, loadSellThrough, loadReports]);
 
-  useEffect(() => { loadTrends(); }, [periodDays, loadTrends]);
+  useEffect(() => { loadTrends(); loadSellThrough(); }, [periodDays, loadTrends, loadSellThrough]);
 
   return (
     <div className="space-y-6">
@@ -295,6 +308,9 @@ export default function IntelligencePage() {
           </TabsTrigger>
           <TabsTrigger value="channels">
             <Zap className="h-4 w-4 mr-1" /> Channels
+          </TabsTrigger>
+          <TabsTrigger value="sell-through">
+            <ShoppingCart className="h-4 w-4 mr-1" /> Sell-Through
           </TabsTrigger>
           <TabsTrigger value="reports">
             <FileText className="h-4 w-4 mr-1" /> Reports
@@ -453,6 +469,91 @@ export default function IntelligencePage() {
                         </TableCell>
                       </TableRow>
                     ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Sell-Through ── */}
+        <TabsContent value="sell-through">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Sell-Through Analysis — {periodDays}-day window</h2>
+            <button
+              onClick={loadSellThrough}
+              disabled={loading.sellThrough}
+              className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-muted"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading.sellThrough ? "animate-spin" : ""}`} /> Refresh
+            </button>
+          </div>
+
+          {sellThrough && (
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4">
+              <Card><CardContent className="pt-4 text-center"><p className="text-2xl font-bold text-green-600">{sellThrough.summary.fastMovers}</p><p className="text-xs text-muted-foreground">Fast Movers</p></CardContent></Card>
+              <Card><CardContent className="pt-4 text-center"><p className="text-2xl font-bold">{sellThrough.summary.normalMovers}</p><p className="text-xs text-muted-foreground">Normal</p></CardContent></Card>
+              <Card><CardContent className="pt-4 text-center"><p className="text-2xl font-bold text-yellow-600">{sellThrough.summary.slowMovers}</p><p className="text-xs text-muted-foreground">Slow Movers</p></CardContent></Card>
+              <Card><CardContent className="pt-4 text-center"><p className="text-2xl font-bold text-red-600">{sellThrough.summary.deadStock}</p><p className="text-xs text-muted-foreground">Dead Stock</p></CardContent></Card>
+              <Card><CardContent className="pt-4 text-center"><p className="text-2xl font-bold text-orange-600">{sellThrough.summary.needsReorder}</p><p className="text-xs text-muted-foreground">Needs Reorder</p></CardContent></Card>
+              <Card><CardContent className="pt-4 text-center"><p className="text-2xl font-bold text-red-500">{sellThrough.summary.outOfStock}</p><p className="text-xs text-muted-foreground">Out of Stock</p></CardContent></Card>
+            </div>
+          )}
+
+          <Card>
+            <CardContent className="pt-4">
+              {!sellThrough?.items.length ? (
+                <p className="text-center text-muted-foreground py-8">No sell-through data available</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>SKU</TableHead>
+                      <TableHead>Product</TableHead>
+                      <TableHead className="text-right cursor-pointer" onClick={() => setSellThroughSort("stock")}>
+                        Stock <ArrowUpDown className="h-3 w-3 inline" />
+                      </TableHead>
+                      <TableHead className="text-right cursor-pointer" onClick={() => setSellThroughSort("sellThrough")}>
+                        Sell-Through % <ArrowUpDown className="h-3 w-3 inline" />
+                      </TableHead>
+                      <TableHead className="text-right">Units Sold</TableHead>
+                      <TableHead className="text-right">Days of Stock</TableHead>
+                      <TableHead className="cursor-pointer" onClick={() => setSellThroughSort("velocity")}>
+                        Velocity <ArrowUpDown className="h-3 w-3 inline" />
+                      </TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {[...sellThrough.items]
+                      .sort((a, b) => {
+                        if (sellThroughSort === "sellThrough") return b.sellThroughRate - a.sellThroughRate;
+                        if (sellThroughSort === "stock") return a.currentStock - b.currentStock;
+                        const order = { fast: 0, normal: 1, slow: 2, dead: 3 };
+                        return order[a.velocity] - order[b.velocity];
+                      })
+                      .map((item) => (
+                        <TableRow key={item.sku}>
+                          <TableCell className="font-mono text-sm">{item.sku}</TableCell>
+                          <TableCell>
+                            <div className="font-medium">{item.productName}</div>
+                            {item.colorName && <div className="text-xs text-muted-foreground">{item.colorName}</div>}
+                          </TableCell>
+                          <TableCell className="text-right">{item.currentStock}</TableCell>
+                          <TableCell className="text-right font-medium">{item.sellThroughRate.toFixed(1)}%</TableCell>
+                          <TableCell className="text-right">{item.unitsSold}</TableCell>
+                          <TableCell className="text-right">{item.daysOfStock != null ? `${item.daysOfStock}d` : "—"}</TableCell>
+                          <TableCell>
+                            <Badge variant={item.velocity === "fast" ? "default" : item.velocity === "normal" ? "secondary" : item.velocity === "slow" ? "outline" : "destructive"} className="text-xs">
+                              {item.velocity}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {item.needsReorder && <Badge variant="destructive" className="text-xs">Reorder</Badge>}
+                            {item.currentStock === 0 && <Badge variant="destructive" className="text-xs">OOS</Badge>}
+                          </TableCell>
+                        </TableRow>
+                      ))}
                   </TableBody>
                 </Table>
               )}

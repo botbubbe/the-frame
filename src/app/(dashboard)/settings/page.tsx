@@ -51,6 +51,37 @@ async function testConnection(integration: string): Promise<{ ok: boolean; messa
   return res.json();
 }
 
+function validateApiKeyFormat(integration: string, value: string): string | null {
+  if (!value) return null;
+  const rules: Record<string, { pattern: RegExp; hint: string }> = {
+    shopify_access_token: { pattern: /^shpat_[a-f0-9]{32,}$/i, hint: "Should start with 'shpat_' followed by hex characters" },
+    instantly_api_key: { pattern: /^[a-zA-Z0-9_-]{20,}$/, hint: "Should be at least 20 alphanumeric characters" },
+    faire_api_key: { pattern: /^[a-zA-Z0-9_-]{10,}$/, hint: "Should be at least 10 characters" },
+    klaviyo_api_key: { pattern: /^pk_[a-zA-Z0-9]{20,}$/, hint: "Should start with 'pk_' followed by alphanumeric characters" },
+    outscraper_api_key: { pattern: /^[a-zA-Z0-9_-]{20,}$/, hint: "Should be at least 20 characters" },
+  };
+  const rule = rules[integration];
+  if (!rule) return null;
+  return rule.pattern.test(value) ? null : rule.hint;
+}
+
+function ApiKeyInput({ id, value, onChange, integration }: { id: string; value: string; onChange: (v: string) => void; integration: string }) {
+  const error = validateApiKeyFormat(integration, value);
+  return (
+    <div>
+      <Input
+        id={id}
+        type="password"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={`Enter ${integration.replace(/_/g, " ")} key`}
+        className={error ? "border-yellow-500" : ""}
+      />
+      {error && <p className="text-xs text-yellow-600 mt-1">⚠️ {error}</p>}
+    </div>
+  );
+}
+
 function TestConnectionButton({ integration, settings: s }: { integration: string; settings: Record<string, string> }) {
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -319,12 +350,11 @@ export default function SettingsPage() {
               <CardContent className="space-y-3">
                 <div className="grid gap-2">
                   <Label htmlFor="instantly_api_key">API Key</Label>
-                  <Input
+                  <ApiKeyInput
                     id="instantly_api_key"
-                    type="password"
                     value={settings.instantly_api_key ?? ""}
-                    onChange={(e) => update("instantly_api_key", e.target.value)}
-                    placeholder="Enter Instantly API key"
+                    onChange={(v) => update("instantly_api_key", v)}
+                    integration="instantly_api_key"
                   />
                 </div>
                 <div className="flex items-center gap-2">
@@ -344,12 +374,11 @@ export default function SettingsPage() {
               <CardContent className="space-y-3">
                 <div className="grid gap-2">
                   <Label htmlFor="outscraper_api_key">API Key</Label>
-                  <Input
+                  <ApiKeyInput
                     id="outscraper_api_key"
-                    type="password"
                     value={settings.outscraper_api_key ?? ""}
-                    onChange={(e) => update("outscraper_api_key", e.target.value)}
-                    placeholder="Enter Outscraper API key"
+                    onChange={(v) => update("outscraper_api_key", v)}
+                    integration="outscraper_api_key"
                   />
                 </div>
                 <div className="flex items-center gap-2">
@@ -378,12 +407,11 @@ export default function SettingsPage() {
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="shopify_access_token">Access Token</Label>
-                  <Input
+                  <ApiKeyInput
                     id="shopify_access_token"
-                    type="password"
                     value={settings.shopify_access_token ?? ""}
-                    onChange={(e) => update("shopify_access_token", e.target.value)}
-                    placeholder="shpat_..."
+                    onChange={(v) => update("shopify_access_token", v)}
+                    integration="shopify_access_token"
                   />
                 </div>
                 <div className="flex items-center gap-2">
@@ -403,12 +431,11 @@ export default function SettingsPage() {
               <CardContent className="space-y-3">
                 <div className="grid gap-2">
                   <Label htmlFor="faire_api_key">API Key</Label>
-                  <Input
+                  <ApiKeyInput
                     id="faire_api_key"
-                    type="password"
                     value={settings.faire_api_key ?? ""}
-                    onChange={(e) => update("faire_api_key", e.target.value)}
-                    placeholder="Enter Faire API key"
+                    onChange={(v) => update("faire_api_key", v)}
+                    integration="faire_api_key"
                   />
                 </div>
                 <div className="flex items-center gap-2">
@@ -428,12 +455,11 @@ export default function SettingsPage() {
               <CardContent className="space-y-3">
                 <div className="grid gap-2">
                   <Label htmlFor="klaviyo_api_key">API Key</Label>
-                  <Input
+                  <ApiKeyInput
                     id="klaviyo_api_key"
-                    type="password"
                     value={settings.klaviyo_api_key ?? ""}
-                    onChange={(e) => update("klaviyo_api_key", e.target.value)}
-                    placeholder="Enter Klaviyo API key"
+                    onChange={(v) => update("klaviyo_api_key", v)}
+                    integration="klaviyo_api_key"
                   />
                 </div>
                 <div className="flex items-center gap-2">
