@@ -25,6 +25,7 @@ import { FACTORY_MAP } from "@/modules/catalog/schema";
 import { ImageManagementTab } from "@/modules/catalog/components/image-management-tab";
 import { CopyManagementTab } from "@/modules/catalog/components/copy-management-tab";
 import { TagManagementTab } from "@/modules/catalog/components/tag-management-tab";
+import { KeywordsTab } from "@/modules/catalog/components/keywords-tab";
 
 type Product = {
   id: string;
@@ -230,6 +231,7 @@ export default function ProductDetailPage() {
           <TabsTrigger value="images">Images ({totalImages})</TabsTrigger>
           <TabsTrigger value="copy">Copy</TabsTrigger>
           <TabsTrigger value="tags">Tags ({tagsList.length})</TabsTrigger>
+          <TabsTrigger value="keywords">Keywords</TabsTrigger>
           <TabsTrigger value="export">Export Preview</TabsTrigger>
         </TabsList>
 
@@ -441,6 +443,11 @@ export default function ProductDetailPage() {
         {/* Tags Tab */}
         <TabsContent value="tags">
           <TagManagementTab productId={productId!} tags={tagsList} onRefresh={loadProduct} />
+        </TabsContent>
+
+        {/* Keywords Tab */}
+        <TabsContent value="keywords">
+          <KeywordsTab productId={productId!} />
         </TabsContent>
 
         {/* Export Preview Tab */}

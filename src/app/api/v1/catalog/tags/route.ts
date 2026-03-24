@@ -2,13 +2,18 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { tags } from "@/modules/catalog/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const productId = searchParams.get("productId");
+  const dimension = searchParams.get("dimension");
 
-  const where = productId ? eq(tags.productId, productId) : undefined;
+  const conditions = [];
+  if (productId) conditions.push(eq(tags.productId, productId));
+  if (dimension) conditions.push(eq(tags.dimension, dimension));
+
+  const where = conditions.length > 0 ? (conditions.length === 1 ? conditions[0] : and(...conditions)) : undefined;
   const results = await db.select().from(tags).where(where);
   return NextResponse.json({ tags: results });
 }
