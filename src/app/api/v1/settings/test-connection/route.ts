@@ -46,9 +46,15 @@ export async function POST(request: NextRequest) {
       instantly: async () => {
         const key = db.select().from(settings).where(eq(settings.key, "instantly_api_key")).get();
         if (!key?.value) return { ok: false, message: "API key is required" };
-        const res = await fetch(`https://api.instantly.ai/api/v1/authenticate?api_key=${key.value}`);
-        if (res.ok) return { ok: true, message: "Connected to Instantly" };
-        return { ok: false, message: `HTTP ${res.status}: Authentication failed` };
+        // Try v2 API first (Bearer token), fallback to v1
+        const resV2 = await fetch("https://api.instantly.ai/api/v2/accounts", {
+          headers: { Authorization: `Bearer ${key.value}` },
+        });
+        if (resV2.ok) return { ok: true, message: "Connected to Instantly (v2)" };
+        // Fallback: v1 API key param
+        const resV1 = await fetch(`https://api.instantly.ai/api/v1/authenticate?api_key=${key.value}`);
+        if (resV1.ok) return { ok: true, message: "Connected to Instantly (v1)" };
+        return { ok: false, message: `HTTP ${resV2.status}: Authentication failed. Check API key format.` };
       },
 
       faire: async () => {
@@ -74,10 +80,13 @@ export async function POST(request: NextRequest) {
       outscraper: async () => {
         const key = db.select().from(settings).where(eq(settings.key, "outscraper_api_key")).get();
         if (!key?.value) return { ok: false, message: "API key is required" };
-        const res = await fetch("https://api.app.outscraper.com/v1/billing", {
-          headers: { "X-API-KEY": key.value },
+        const res = await fetch("https://api.app.outscraper.com/profile", {
+          headers: { "X-API-Key": key.value },
         });
-        if (res.ok) return { ok: true, message: "Connected to Outscraper" };
+        if (res.ok) {
+          const data = await res.json();
+          return { ok: true, message: `Connected to Outscraper (balance: $${data.balance?.toFixed(2) || '?'})` };
+        }
         return { ok: false, message: `HTTP ${res.status}: Authentication failed` };
       },
     };

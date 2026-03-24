@@ -56,10 +56,10 @@ function validateApiKeyFormat(integration: string, value: string): string | null
   if (!value) return null;
   const rules: Record<string, { pattern: RegExp; hint: string }> = {
     shopify_access_token: { pattern: /^shpat_[a-f0-9]{32,}$/i, hint: "Should start with 'shpat_' followed by hex characters" },
-    instantly_api_key: { pattern: /^[a-zA-Z0-9_-]{20,}$/, hint: "Should be at least 20 alphanumeric characters" },
-    faire_api_key: { pattern: /^[a-zA-Z0-9_-]{10,}$/, hint: "Should be at least 10 characters" },
-    klaviyo_api_key: { pattern: /^pk_[a-zA-Z0-9]{20,}$/, hint: "Should start with 'pk_' followed by alphanumeric characters" },
-    outscraper_api_key: { pattern: /^[a-zA-Z0-9_-]{20,}$/, hint: "Should be at least 20 characters" },
+    instantly_api_key: { pattern: /^.{10,}$/, hint: "Should be at least 10 characters" },
+    faire_api_key: { pattern: /^.{10,}$/, hint: "Should be at least 10 characters" },
+    klaviyo_api_key: { pattern: /^.{10,}$/, hint: "Should be at least 10 characters" },
+    outscraper_api_key: { pattern: /^.{10,}$/, hint: "Should be at least 10 characters" },
   };
   const rule = rules[integration];
   if (!rule) return null;
