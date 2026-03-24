@@ -1,4 +1,4 @@
-CREATE TABLE `activity_feed` (
+CREATE TABLE IF NOT EXISTS `activity_feed` (
 	`id` text PRIMARY KEY NOT NULL,
 	`event_type` text NOT NULL,
 	`module` text NOT NULL,
@@ -9,7 +9,7 @@ CREATE TABLE `activity_feed` (
 	`created_at` text DEFAULT (datetime('now'))
 );
 --> statement-breakpoint
-CREATE TABLE `agent_runs` (
+CREATE TABLE IF NOT EXISTS `agent_runs` (
 	`id` text PRIMARY KEY NOT NULL,
 	`agent_name` text NOT NULL,
 	`module` text NOT NULL,
@@ -24,7 +24,7 @@ CREATE TABLE `agent_runs` (
 	`completed_at` text
 );
 --> statement-breakpoint
-CREATE TABLE `api_keys` (
+CREATE TABLE IF NOT EXISTS `api_keys` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
 	`key_hash` text NOT NULL,
@@ -36,8 +36,8 @@ CREATE TABLE `api_keys` (
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `api_keys_key_hash_unique` ON `api_keys` (`key_hash`);--> statement-breakpoint
-CREATE TABLE `change_logs` (
+CREATE UNIQUE INDEX IF NOT EXISTS `api_keys_key_hash_unique` ON `api_keys` (`key_hash`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `change_logs` (
 	`id` text PRIMARY KEY NOT NULL,
 	`timestamp` text DEFAULT (datetime('now')),
 	`entity_type` text NOT NULL,
@@ -51,7 +51,7 @@ CREATE TABLE `change_logs` (
 	`request_id` text
 );
 --> statement-breakpoint
-CREATE TABLE `error_logs` (
+CREATE TABLE IF NOT EXISTS `error_logs` (
 	`id` text PRIMARY KEY NOT NULL,
 	`timestamp` text DEFAULT (datetime('now')),
 	`level` text NOT NULL,
@@ -69,7 +69,7 @@ CREATE TABLE `error_logs` (
 	`resolved_by` text
 );
 --> statement-breakpoint
-CREATE TABLE `jobs` (
+CREATE TABLE IF NOT EXISTS `jobs` (
 	`id` text PRIMARY KEY NOT NULL,
 	`type` text NOT NULL,
 	`module` text NOT NULL,
@@ -87,7 +87,7 @@ CREATE TABLE `jobs` (
 	`completed_at` text
 );
 --> statement-breakpoint
-CREATE TABLE `reporting_logs` (
+CREATE TABLE IF NOT EXISTS `reporting_logs` (
 	`id` text PRIMARY KEY NOT NULL,
 	`timestamp` text DEFAULT (datetime('now')),
 	`event_type` text NOT NULL,
@@ -99,7 +99,7 @@ CREATE TABLE `reporting_logs` (
 	`cost_cents` integer
 );
 --> statement-breakpoint
-CREATE TABLE `settings` (
+CREATE TABLE IF NOT EXISTS `settings` (
 	`key` text PRIMARY KEY NOT NULL,
 	`value` text,
 	`type` text DEFAULT 'string' NOT NULL,
@@ -107,7 +107,7 @@ CREATE TABLE `settings` (
 	`updated_at` text DEFAULT (datetime('now'))
 );
 --> statement-breakpoint
-CREATE TABLE `users` (
+CREATE TABLE IF NOT EXISTS `users` (
 	`id` text PRIMARY KEY NOT NULL,
 	`email` text NOT NULL,
 	`name` text NOT NULL,
@@ -119,8 +119,8 @@ CREATE TABLE `users` (
 	`updated_at` text DEFAULT (datetime('now'))
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `users_email_unique` ON `users` (`email`);--> statement-breakpoint
-CREATE TABLE `campaign_leads` (
+CREATE UNIQUE INDEX IF NOT EXISTS `users_email_unique` ON `users` (`email`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `campaign_leads` (
 	`id` text PRIMARY KEY NOT NULL,
 	`campaign_id` text NOT NULL,
 	`company_id` text NOT NULL,
@@ -136,11 +136,11 @@ CREATE TABLE `campaign_leads` (
 	`created_at` text DEFAULT (datetime('now'))
 );
 --> statement-breakpoint
-CREATE INDEX `idx_cl_campaign` ON `campaign_leads` (`campaign_id`);--> statement-breakpoint
-CREATE INDEX `idx_cl_company` ON `campaign_leads` (`company_id`);--> statement-breakpoint
-CREATE INDEX `idx_cl_status` ON `campaign_leads` (`status`);--> statement-breakpoint
-CREATE INDEX `idx_cl_instantly` ON `campaign_leads` (`instantly_lead_id`);--> statement-breakpoint
-CREATE TABLE `campaigns` (
+CREATE INDEX IF NOT EXISTS `idx_cl_campaign` ON `campaign_leads` (`campaign_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_cl_company` ON `campaign_leads` (`company_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_cl_status` ON `campaign_leads` (`status`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_cl_instantly` ON `campaign_leads` (`instantly_lead_id`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `campaigns` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
 	`type` text DEFAULT 'email_sequence' NOT NULL,
@@ -168,10 +168,10 @@ CREATE TABLE `campaigns` (
 	`updated_at` text DEFAULT (datetime('now'))
 );
 --> statement-breakpoint
-CREATE INDEX `idx_campaigns_status` ON `campaigns` (`status`);--> statement-breakpoint
-CREATE INDEX `idx_campaigns_type` ON `campaigns` (`type`);--> statement-breakpoint
-CREATE INDEX `idx_campaigns_instantly` ON `campaigns` (`instantly_campaign_id`);--> statement-breakpoint
-CREATE TABLE `companies` (
+CREATE INDEX IF NOT EXISTS `idx_campaigns_status` ON `campaigns` (`status`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_campaigns_type` ON `campaigns` (`type`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_campaigns_instantly` ON `campaigns` (`instantly_campaign_id`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `companies` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
 	`type` text,
@@ -200,12 +200,12 @@ CREATE TABLE `companies` (
 	FOREIGN KEY (`owner_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE INDEX `idx_companies_icp_tier` ON `companies` (`icp_tier`);--> statement-breakpoint
-CREATE INDEX `idx_companies_status` ON `companies` (`status`);--> statement-breakpoint
-CREATE INDEX `idx_companies_state` ON `companies` (`state`);--> statement-breakpoint
-CREATE INDEX `idx_companies_owner` ON `companies` (`owner_id`);--> statement-breakpoint
-CREATE INDEX `idx_companies_domain` ON `companies` (`domain`);--> statement-breakpoint
-CREATE TABLE `contacts` (
+CREATE INDEX IF NOT EXISTS `idx_companies_icp_tier` ON `companies` (`icp_tier`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_companies_status` ON `companies` (`status`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_companies_state` ON `companies` (`state`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_companies_owner` ON `companies` (`owner_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_companies_domain` ON `companies` (`domain`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `contacts` (
 	`id` text PRIMARY KEY NOT NULL,
 	`store_id` text,
 	`company_id` text NOT NULL,
@@ -226,10 +226,10 @@ CREATE TABLE `contacts` (
 	FOREIGN KEY (`owner_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE INDEX `idx_contacts_company` ON `contacts` (`company_id`);--> statement-breakpoint
-CREATE INDEX `idx_contacts_store` ON `contacts` (`store_id`);--> statement-breakpoint
-CREATE INDEX `idx_contacts_email` ON `contacts` (`email`);--> statement-breakpoint
-CREATE TABLE `deal_activities` (
+CREATE INDEX IF NOT EXISTS `idx_contacts_company` ON `contacts` (`company_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_contacts_store` ON `contacts` (`store_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_contacts_email` ON `contacts` (`email`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `deal_activities` (
 	`id` text PRIMARY KEY NOT NULL,
 	`deal_id` text NOT NULL,
 	`company_id` text,
@@ -243,10 +243,10 @@ CREATE TABLE `deal_activities` (
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE INDEX `idx_activities_deal` ON `deal_activities` (`deal_id`);--> statement-breakpoint
-CREATE INDEX `idx_activities_company` ON `deal_activities` (`company_id`);--> statement-breakpoint
-CREATE INDEX `idx_activities_created` ON `deal_activities` (`created_at`);--> statement-breakpoint
-CREATE TABLE `deals` (
+CREATE INDEX IF NOT EXISTS `idx_activities_deal` ON `deal_activities` (`deal_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_activities_company` ON `deal_activities` (`company_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_activities_created` ON `deal_activities` (`created_at`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `deals` (
 	`id` text PRIMARY KEY NOT NULL,
 	`company_id` text NOT NULL,
 	`store_id` text,
@@ -270,12 +270,12 @@ CREATE TABLE `deals` (
 	FOREIGN KEY (`owner_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE INDEX `idx_deals_stage` ON `deals` (`stage`);--> statement-breakpoint
-CREATE INDEX `idx_deals_owner` ON `deals` (`owner_id`);--> statement-breakpoint
-CREATE INDEX `idx_deals_company` ON `deals` (`company_id`);--> statement-breakpoint
-CREATE INDEX `idx_deals_snooze` ON `deals` (`snooze_until`);--> statement-breakpoint
-CREATE INDEX `idx_deals_reorder` ON `deals` (`reorder_due_at`);--> statement-breakpoint
-CREATE TABLE `instantly_sync` (
+CREATE INDEX IF NOT EXISTS `idx_deals_stage` ON `deals` (`stage`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_deals_owner` ON `deals` (`owner_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_deals_company` ON `deals` (`company_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_deals_snooze` ON `deals` (`snooze_until`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_deals_reorder` ON `deals` (`reorder_due_at`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `instantly_sync` (
 	`id` text PRIMARY KEY NOT NULL,
 	`entity_type` text NOT NULL,
 	`entity_id` text NOT NULL,
@@ -285,9 +285,9 @@ CREATE TABLE `instantly_sync` (
 	`error_message` text
 );
 --> statement-breakpoint
-CREATE INDEX `idx_sync_entity` ON `instantly_sync` (`entity_type`,`entity_id`);--> statement-breakpoint
-CREATE INDEX `idx_sync_instantly` ON `instantly_sync` (`instantly_id`);--> statement-breakpoint
-CREATE TABLE `smart_lists` (
+CREATE INDEX IF NOT EXISTS `idx_sync_entity` ON `instantly_sync` (`entity_type`,`entity_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_sync_instantly` ON `instantly_sync` (`instantly_id`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `smart_lists` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
 	`description` text,
@@ -301,7 +301,7 @@ CREATE TABLE `smart_lists` (
 	FOREIGN KEY (`owner_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE TABLE `stores` (
+CREATE TABLE IF NOT EXISTS `stores` (
 	`id` text PRIMARY KEY NOT NULL,
 	`company_id` text NOT NULL,
 	`name` text NOT NULL,
@@ -324,8 +324,8 @@ CREATE TABLE `stores` (
 	FOREIGN KEY (`company_id`) REFERENCES `companies`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE INDEX `idx_stores_company` ON `stores` (`company_id`);--> statement-breakpoint
-CREATE TABLE `catalog_copy_versions` (
+CREATE INDEX IF NOT EXISTS `idx_stores_company` ON `stores` (`company_id`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `catalog_copy_versions` (
 	`id` text PRIMARY KEY NOT NULL,
 	`product_id` text NOT NULL,
 	`field_name` text,
@@ -335,7 +335,7 @@ CREATE TABLE `catalog_copy_versions` (
 	FOREIGN KEY (`product_id`) REFERENCES `catalog_products`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE TABLE `catalog_exports` (
+CREATE TABLE IF NOT EXISTS `catalog_exports` (
 	`id` text PRIMARY KEY NOT NULL,
 	`platform` text,
 	`file_path` text,
@@ -344,7 +344,7 @@ CREATE TABLE `catalog_exports` (
 	`created_by` text DEFAULT 'admin'
 );
 --> statement-breakpoint
-CREATE TABLE `catalog_image_types` (
+CREATE TABLE IF NOT EXISTS `catalog_image_types` (
 	`id` text PRIMARY KEY NOT NULL,
 	`slug` text,
 	`label` text,
@@ -357,8 +357,8 @@ CREATE TABLE `catalog_image_types` (
 	`sort_order` integer DEFAULT 0
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `catalog_image_types_slug_unique` ON `catalog_image_types` (`slug`);--> statement-breakpoint
-CREATE TABLE `catalog_images` (
+CREATE UNIQUE INDEX IF NOT EXISTS `catalog_image_types_slug_unique` ON `catalog_image_types` (`slug`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `catalog_images` (
 	`id` text PRIMARY KEY NOT NULL,
 	`sku_id` text NOT NULL,
 	`file_path` text,
@@ -376,7 +376,7 @@ CREATE TABLE `catalog_images` (
 	FOREIGN KEY (`image_type_id`) REFERENCES `catalog_image_types`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE TABLE `catalog_name_options` (
+CREATE TABLE IF NOT EXISTS `catalog_name_options` (
 	`id` text PRIMARY KEY NOT NULL,
 	`product_id` text NOT NULL,
 	`name` text,
@@ -385,7 +385,7 @@ CREATE TABLE `catalog_name_options` (
 	FOREIGN KEY (`product_id`) REFERENCES `catalog_products`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE TABLE `catalog_notes` (
+CREATE TABLE IF NOT EXISTS `catalog_notes` (
 	`id` text PRIMARY KEY NOT NULL,
 	`entity_type` text,
 	`entity_id` text,
@@ -394,7 +394,7 @@ CREATE TABLE `catalog_notes` (
 	`created_at` text DEFAULT (datetime('now'))
 );
 --> statement-breakpoint
-CREATE TABLE `catalog_products` (
+CREATE TABLE IF NOT EXISTS `catalog_products` (
 	`id` text PRIMARY KEY NOT NULL,
 	`sku_prefix` text,
 	`name` text,
@@ -420,8 +420,8 @@ CREATE TABLE `catalog_products` (
 	FOREIGN KEY (`purchase_order_id`) REFERENCES `catalog_purchase_orders`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `catalog_products_sku_prefix_unique` ON `catalog_products` (`sku_prefix`);--> statement-breakpoint
-CREATE TABLE `catalog_purchase_orders` (
+CREATE UNIQUE INDEX IF NOT EXISTS `catalog_products_sku_prefix_unique` ON `catalog_products` (`sku_prefix`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `catalog_purchase_orders` (
 	`id` text PRIMARY KEY NOT NULL,
 	`po_number` text,
 	`supplier` text,
@@ -431,8 +431,8 @@ CREATE TABLE `catalog_purchase_orders` (
 	`created_at` text DEFAULT (datetime('now'))
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `catalog_purchase_orders_po_number_unique` ON `catalog_purchase_orders` (`po_number`);--> statement-breakpoint
-CREATE TABLE `catalog_skus` (
+CREATE UNIQUE INDEX IF NOT EXISTS `catalog_purchase_orders_po_number_unique` ON `catalog_purchase_orders` (`po_number`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `catalog_skus` (
 	`id` text PRIMARY KEY NOT NULL,
 	`product_id` text NOT NULL,
 	`sku` text,
@@ -455,8 +455,8 @@ CREATE TABLE `catalog_skus` (
 	FOREIGN KEY (`product_id`) REFERENCES `catalog_products`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `catalog_skus_sku_unique` ON `catalog_skus` (`sku`);--> statement-breakpoint
-CREATE TABLE `catalog_tags` (
+CREATE UNIQUE INDEX IF NOT EXISTS `catalog_skus_sku_unique` ON `catalog_skus` (`sku`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `catalog_tags` (
 	`id` text PRIMARY KEY NOT NULL,
 	`product_id` text NOT NULL,
 	`tag_name` text,
@@ -465,7 +465,7 @@ CREATE TABLE `catalog_tags` (
 	FOREIGN KEY (`product_id`) REFERENCES `catalog_products`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE TABLE `order_items` (
+CREATE TABLE IF NOT EXISTS `order_items` (
 	`id` text PRIMARY KEY NOT NULL,
 	`order_id` text NOT NULL,
 	`product_id` text,
@@ -481,8 +481,8 @@ CREATE TABLE `order_items` (
 	FOREIGN KEY (`sku_id`) REFERENCES `catalog_skus`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE INDEX `idx_order_items_order_id` ON `order_items` (`order_id`);--> statement-breakpoint
-CREATE TABLE `orders` (
+CREATE INDEX IF NOT EXISTS `idx_order_items_order_id` ON `order_items` (`order_id`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `orders` (
 	`id` text PRIMARY KEY NOT NULL,
 	`order_number` text NOT NULL,
 	`company_id` text,
@@ -510,13 +510,13 @@ CREATE TABLE `orders` (
 	FOREIGN KEY (`contact_id`) REFERENCES `contacts`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE INDEX `idx_orders_channel` ON `orders` (`channel`);--> statement-breakpoint
-CREATE INDEX `idx_orders_status` ON `orders` (`status`);--> statement-breakpoint
-CREATE INDEX `idx_orders_company_id` ON `orders` (`company_id`);--> statement-breakpoint
-CREATE INDEX `idx_orders_external_id` ON `orders` (`external_id`);--> statement-breakpoint
-CREATE INDEX `idx_orders_order_number` ON `orders` (`order_number`);--> statement-breakpoint
-CREATE INDEX `idx_orders_placed_at` ON `orders` (`placed_at`);--> statement-breakpoint
-CREATE TABLE `returns` (
+CREATE INDEX IF NOT EXISTS `idx_orders_channel` ON `orders` (`channel`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_orders_status` ON `orders` (`status`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_orders_company_id` ON `orders` (`company_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_orders_external_id` ON `orders` (`external_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_orders_order_number` ON `orders` (`order_number`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_orders_placed_at` ON `orders` (`placed_at`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `returns` (
 	`id` text PRIMARY KEY NOT NULL,
 	`order_id` text NOT NULL,
 	`reason` text,
@@ -529,9 +529,9 @@ CREATE TABLE `returns` (
 	FOREIGN KEY (`order_id`) REFERENCES `orders`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE INDEX `idx_returns_order_id` ON `returns` (`order_id`);--> statement-breakpoint
-CREATE INDEX `idx_returns_status` ON `returns` (`status`);--> statement-breakpoint
-CREATE TABLE `inventory_factories` (
+CREATE INDEX IF NOT EXISTS `idx_returns_order_id` ON `returns` (`order_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_returns_status` ON `returns` (`status`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `inventory_factories` (
 	`id` text PRIMARY KEY NOT NULL,
 	`code` text NOT NULL,
 	`name` text NOT NULL,
@@ -545,8 +545,8 @@ CREATE TABLE `inventory_factories` (
 	`created_at` text DEFAULT (datetime('now'))
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `inventory_factories_code_unique` ON `inventory_factories` (`code`);--> statement-breakpoint
-CREATE TABLE `inventory` (
+CREATE UNIQUE INDEX IF NOT EXISTS `inventory_factories_code_unique` ON `inventory_factories` (`code`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `inventory` (
 	`id` text PRIMARY KEY NOT NULL,
 	`sku_id` text NOT NULL,
 	`location` text DEFAULT 'warehouse' NOT NULL,
@@ -561,10 +561,10 @@ CREATE TABLE `inventory` (
 	`updated_at` text DEFAULT (datetime('now'))
 );
 --> statement-breakpoint
-CREATE INDEX `idx_inventory_sku_id` ON `inventory` (`sku_id`);--> statement-breakpoint
-CREATE INDEX `idx_inventory_location` ON `inventory` (`location`);--> statement-breakpoint
-CREATE INDEX `idx_inventory_needs_reorder` ON `inventory` (`needs_reorder`);--> statement-breakpoint
-CREATE TABLE `inventory_movements` (
+CREATE INDEX IF NOT EXISTS `idx_inventory_sku_id` ON `inventory` (`sku_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_inventory_location` ON `inventory` (`location`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_inventory_needs_reorder` ON `inventory` (`needs_reorder`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `inventory_movements` (
 	`id` text PRIMARY KEY NOT NULL,
 	`sku_id` text NOT NULL,
 	`from_location` text,
@@ -575,9 +575,9 @@ CREATE TABLE `inventory_movements` (
 	`created_at` text DEFAULT (datetime('now'))
 );
 --> statement-breakpoint
-CREATE INDEX `idx_movements_sku_id` ON `inventory_movements` (`sku_id`);--> statement-breakpoint
-CREATE INDEX `idx_movements_created_at` ON `inventory_movements` (`created_at`);--> statement-breakpoint
-CREATE TABLE `inventory_po_line_items` (
+CREATE INDEX IF NOT EXISTS `idx_movements_sku_id` ON `inventory_movements` (`sku_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_movements_created_at` ON `inventory_movements` (`created_at`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `inventory_po_line_items` (
 	`id` text PRIMARY KEY NOT NULL,
 	`po_id` text NOT NULL,
 	`sku_id` text NOT NULL,
@@ -587,8 +587,8 @@ CREATE TABLE `inventory_po_line_items` (
 	FOREIGN KEY (`po_id`) REFERENCES `inventory_purchase_orders`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE INDEX `idx_po_line_items_po_id` ON `inventory_po_line_items` (`po_id`);--> statement-breakpoint
-CREATE TABLE `inventory_purchase_orders` (
+CREATE INDEX IF NOT EXISTS `idx_po_line_items_po_id` ON `inventory_po_line_items` (`po_id`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `inventory_purchase_orders` (
 	`id` text PRIMARY KEY NOT NULL,
 	`po_number` text NOT NULL,
 	`factory_id` text NOT NULL,
@@ -609,8 +609,8 @@ CREATE TABLE `inventory_purchase_orders` (
 	FOREIGN KEY (`factory_id`) REFERENCES `inventory_factories`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `inventory_purchase_orders_po_number_unique` ON `inventory_purchase_orders` (`po_number`);--> statement-breakpoint
-CREATE TABLE `inventory_qc_inspections` (
+CREATE UNIQUE INDEX IF NOT EXISTS `inventory_purchase_orders_po_number_unique` ON `inventory_purchase_orders` (`po_number`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `inventory_qc_inspections` (
 	`id` text PRIMARY KEY NOT NULL,
 	`po_id` text NOT NULL,
 	`inspector` text,
@@ -624,7 +624,7 @@ CREATE TABLE `inventory_qc_inspections` (
 	FOREIGN KEY (`po_id`) REFERENCES `inventory_purchase_orders`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE TABLE `account_health_history` (
+CREATE TABLE IF NOT EXISTS `account_health_history` (
 	`id` text PRIMARY KEY NOT NULL,
 	`customer_account_id` text NOT NULL,
 	`score` integer NOT NULL,
@@ -634,9 +634,9 @@ CREATE TABLE `account_health_history` (
 	FOREIGN KEY (`customer_account_id`) REFERENCES `customer_accounts`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE INDEX `idx_health_history_account` ON `account_health_history` (`customer_account_id`);--> statement-breakpoint
-CREATE INDEX `idx_health_history_date` ON `account_health_history` (`calculated_at`);--> statement-breakpoint
-CREATE TABLE `customer_accounts` (
+CREATE INDEX IF NOT EXISTS `idx_health_history_account` ON `account_health_history` (`customer_account_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_health_history_date` ON `account_health_history` (`calculated_at`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `customer_accounts` (
 	`id` text PRIMARY KEY NOT NULL,
 	`company_id` text NOT NULL,
 	`tier` text DEFAULT 'bronze' NOT NULL,
@@ -656,13 +656,13 @@ CREATE TABLE `customer_accounts` (
 	FOREIGN KEY (`company_id`) REFERENCES `companies`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `customer_accounts_company_id_unique` ON `customer_accounts` (`company_id`);--> statement-breakpoint
-CREATE INDEX `idx_customer_accounts_company` ON `customer_accounts` (`company_id`);--> statement-breakpoint
-CREATE INDEX `idx_customer_accounts_tier` ON `customer_accounts` (`tier`);--> statement-breakpoint
-CREATE INDEX `idx_customer_accounts_health` ON `customer_accounts` (`health_status`);--> statement-breakpoint
-CREATE INDEX `idx_customer_accounts_ltv` ON `customer_accounts` (`lifetime_value`);--> statement-breakpoint
-CREATE INDEX `idx_customer_accounts_reorder` ON `customer_accounts` (`next_reorder_estimate`);--> statement-breakpoint
-CREATE TABLE `expense_categories` (
+CREATE UNIQUE INDEX IF NOT EXISTS `customer_accounts_company_id_unique` ON `customer_accounts` (`company_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_customer_accounts_company` ON `customer_accounts` (`company_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_customer_accounts_tier` ON `customer_accounts` (`tier`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_customer_accounts_health` ON `customer_accounts` (`health_status`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_customer_accounts_ltv` ON `customer_accounts` (`lifetime_value`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_customer_accounts_reorder` ON `customer_accounts` (`next_reorder_estimate`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `expense_categories` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
 	`parent_id` text,
@@ -670,7 +670,7 @@ CREATE TABLE `expense_categories` (
 	`created_at` text DEFAULT (datetime('now'))
 );
 --> statement-breakpoint
-CREATE TABLE `expenses` (
+CREATE TABLE IF NOT EXISTS `expenses` (
 	`id` text PRIMARY KEY NOT NULL,
 	`category_id` text,
 	`description` text NOT NULL,
@@ -684,11 +684,11 @@ CREATE TABLE `expenses` (
 	FOREIGN KEY (`category_id`) REFERENCES `expense_categories`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE INDEX `idx_expenses_category` ON `expenses` (`category_id`);--> statement-breakpoint
-CREATE INDEX `idx_expenses_date` ON `expenses` (`date`);--> statement-breakpoint
-CREATE INDEX `idx_expenses_vendor` ON `expenses` (`vendor`);--> statement-breakpoint
-CREATE INDEX `idx_expenses_recurring` ON `expenses` (`recurring`);--> statement-breakpoint
-CREATE TABLE `settlement_line_items` (
+CREATE INDEX IF NOT EXISTS `idx_expenses_category` ON `expenses` (`category_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_expenses_date` ON `expenses` (`date`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_expenses_vendor` ON `expenses` (`vendor`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_expenses_recurring` ON `expenses` (`recurring`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `settlement_line_items` (
 	`id` text PRIMARY KEY NOT NULL,
 	`settlement_id` text NOT NULL,
 	`order_id` text,
@@ -699,10 +699,10 @@ CREATE TABLE `settlement_line_items` (
 	FOREIGN KEY (`settlement_id`) REFERENCES `settlements`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE INDEX `idx_sli_settlement_id` ON `settlement_line_items` (`settlement_id`);--> statement-breakpoint
-CREATE INDEX `idx_sli_order_id` ON `settlement_line_items` (`order_id`);--> statement-breakpoint
-CREATE INDEX `idx_sli_type` ON `settlement_line_items` (`type`);--> statement-breakpoint
-CREATE TABLE `settlements` (
+CREATE INDEX IF NOT EXISTS `idx_sli_settlement_id` ON `settlement_line_items` (`settlement_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_sli_order_id` ON `settlement_line_items` (`order_id`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_sli_type` ON `settlement_line_items` (`type`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `settlements` (
 	`id` text PRIMARY KEY NOT NULL,
 	`channel` text NOT NULL,
 	`period_start` text NOT NULL,
@@ -721,11 +721,11 @@ CREATE TABLE `settlements` (
 	`created_at` text DEFAULT (datetime('now'))
 );
 --> statement-breakpoint
-CREATE INDEX `idx_settlements_channel` ON `settlements` (`channel`);--> statement-breakpoint
-CREATE INDEX `idx_settlements_status` ON `settlements` (`status`);--> statement-breakpoint
-CREATE INDEX `idx_settlements_period` ON `settlements` (`period_start`,`period_end`);--> statement-breakpoint
-CREATE INDEX `idx_settlements_external_id` ON `settlements` (`external_id`);--> statement-breakpoint
-CREATE TABLE `marketing_ad_campaigns` (
+CREATE INDEX IF NOT EXISTS `idx_settlements_channel` ON `settlements` (`channel`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_settlements_status` ON `settlements` (`status`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_settlements_period` ON `settlements` (`period_start`,`period_end`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_settlements_external_id` ON `settlements` (`external_id`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `marketing_ad_campaigns` (
 	`id` text PRIMARY KEY NOT NULL,
 	`platform` text NOT NULL,
 	`campaign_name` text NOT NULL,
@@ -742,8 +742,8 @@ CREATE TABLE `marketing_ad_campaigns` (
 	`created_at` text DEFAULT (datetime('now'))
 );
 --> statement-breakpoint
-CREATE INDEX `idx_ad_platform` ON `marketing_ad_campaigns` (`platform`);--> statement-breakpoint
-CREATE TABLE `marketing_content_calendar` (
+CREATE INDEX IF NOT EXISTS `idx_ad_platform` ON `marketing_ad_campaigns` (`platform`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `marketing_content_calendar` (
 	`id` text PRIMARY KEY NOT NULL,
 	`title` text NOT NULL,
 	`type` text NOT NULL,
@@ -757,10 +757,10 @@ CREATE TABLE `marketing_content_calendar` (
 	`created_at` text DEFAULT (datetime('now'))
 );
 --> statement-breakpoint
-CREATE INDEX `idx_content_status` ON `marketing_content_calendar` (`status`);--> statement-breakpoint
-CREATE INDEX `idx_content_scheduled` ON `marketing_content_calendar` (`scheduled_date`);--> statement-breakpoint
-CREATE INDEX `idx_content_platform` ON `marketing_content_calendar` (`platform`);--> statement-breakpoint
-CREATE TABLE `marketing_influencers` (
+CREATE INDEX IF NOT EXISTS `idx_content_status` ON `marketing_content_calendar` (`status`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_content_scheduled` ON `marketing_content_calendar` (`scheduled_date`);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_content_platform` ON `marketing_content_calendar` (`platform`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `marketing_influencers` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
 	`platform` text NOT NULL,
@@ -775,8 +775,8 @@ CREATE TABLE `marketing_influencers` (
 	`created_at` text DEFAULT (datetime('now'))
 );
 --> statement-breakpoint
-CREATE INDEX `idx_influencer_status` ON `marketing_influencers` (`status`);--> statement-breakpoint
-CREATE TABLE `marketing_seo_keywords` (
+CREATE INDEX IF NOT EXISTS `idx_influencer_status` ON `marketing_influencers` (`status`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `marketing_seo_keywords` (
 	`id` text PRIMARY KEY NOT NULL,
 	`keyword` text NOT NULL,
 	`current_rank` integer,
