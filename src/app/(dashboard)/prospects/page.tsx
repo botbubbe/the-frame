@@ -28,6 +28,9 @@ interface Prospect {
   website: string;
   domain: string;
   enrichment_status: string;
+  source_type: string | null;
+  source_id: string | null;
+  source_query: string | null;
 }
 
 interface FilterOptions {
@@ -38,6 +41,8 @@ interface FilterOptions {
   segments: { segment: string; count: number }[];
   companyCategories: { category: string; count: number }[];
   icpRange: { min: number; max: number };
+  sourceTypes: { source_type: string; count: number }[];
+  sourceIds: { source_type: string; source_id: string; count: number }[];
 }
 
 interface SmartList {
@@ -116,11 +121,14 @@ function ProspectsPage() {
   const hasPhone = searchParams.get("has_phone");
   const icpMin = searchParams.get("icp_min");
   const icpMax = searchParams.get("icp_max");
+  const sourceTypeFilter = searchParams.getAll("source_type");
+  const sourceIdFilter = searchParams.getAll("source_id");
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
   const [selectAllMatching, setSelectAllMatching] = useState(false);
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkEnrichProgress, setBulkEnrichProgress] = useState<{ done: number; total: number } | null>(null);
   const [notQualifiedCount, setNotQualifiedCount] = useState(0);
   const [searchInput, setSearchInput] = useState(search);
 
@@ -181,6 +189,7 @@ function ProspectsPage() {
   const [mergeSuccess, setMergeSuccess] = useState<string | null>(null);
 
   const activeFilterCount = stateFilter.length + categoryFilter.length + sourceFilter.length + statusFilter.length + segmentFilter.length
+    + sourceTypeFilter.length + sourceIdFilter.length
     + (hasEmail ? 1 : 0) + (hasPhone ? 1 : 0) + (icpMin ? 1 : 0) + (icpMax ? 1 : 0);
 
   const buildUrl = useCallback((overrides: Record<string, string | string[] | null>) => {
@@ -188,6 +197,7 @@ function ProspectsPage() {
     const vals: Record<string, string | string[] | null> = {
       page: String(page), search, sort, order,
       state: stateFilter, category: categoryFilter, source: sourceFilter, status: statusFilter, segment: segmentFilter,
+      source_type: sourceTypeFilter, source_id: sourceIdFilter,
       has_email: hasEmail, has_phone: hasPhone, icp_min: icpMin, icp_max: icpMax,
       ...overrides,
     };
@@ -197,7 +207,7 @@ function ProspectsPage() {
       else p.set(k, v);
     }
     return `/prospects?${p.toString()}`;
-  }, [page, search, sort, order, stateFilter, categoryFilter, sourceFilter, statusFilter, segmentFilter, hasEmail, hasPhone, icpMin, icpMax]);
+  }, [page, search, sort, order, stateFilter, categoryFilter, sourceFilter, statusFilter, segmentFilter, sourceTypeFilter, sourceIdFilter, hasEmail, hasPhone, icpMin, icpMax]);
 
   const currentFilters = useCallback(() => {
     const f: Record<string, unknown> = {};
@@ -206,12 +216,14 @@ function ProspectsPage() {
     if (sourceFilter.length) f.source = sourceFilter;
     if (statusFilter.length) f.status = statusFilter;
     if (segmentFilter.length) f.segment = segmentFilter;
+    if (sourceTypeFilter.length) f.source_type = sourceTypeFilter;
+    if (sourceIdFilter.length) f.source_id = sourceIdFilter;
     if (hasEmail) f.has_email = hasEmail;
     if (hasPhone) f.has_phone = hasPhone;
     if (icpMin) f.icp_min = icpMin;
     if (icpMax) f.icp_max = icpMax;
     return f;
-  }, [stateFilter, categoryFilter, sourceFilter, statusFilter, segmentFilter, hasEmail, hasPhone, icpMin, icpMax]);
+  }, [stateFilter, categoryFilter, sourceFilter, statusFilter, segmentFilter, sourceTypeFilter, sourceIdFilter, hasEmail, hasPhone, icpMin, icpMax]);
 
   // Fetch data
   useEffect(() => {
@@ -360,7 +372,7 @@ function ProspectsPage() {
     setActiveSmartList(null);
   };
   const clearAllFilters = () => {
-    router.push(buildUrl({ state: null, category: null, source: null, status: null, segment: null, has_email: null, has_phone: null, icp_min: null, icp_max: null, page: "1" }));
+    router.push(buildUrl({ state: null, category: null, source: null, status: null, segment: null, source_type: null, source_id: null, has_email: null, has_phone: null, icp_min: null, icp_max: null, page: "1" }));
     setActiveSmartList(null);
   };
 
@@ -409,11 +421,18 @@ function ProspectsPage() {
             )}
           </p>
         </div>
-        <button onClick={findDuplicates}
-          className="px-4 py-2.5 border border-amber-300 bg-amber-50 text-amber-700 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-amber-100 dark:bg-amber-900/20 dark:border-amber-700 dark:text-amber-400">
-          <Search className="w-4 h-4" />
-          Find Duplicates
-        </button>
+        <div className="flex items-center gap-3">
+          <Link href="/prospects/sources"
+            className="px-4 py-2.5 border border-blue-300 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-blue-100 dark:bg-blue-900/20 dark:border-blue-700 dark:text-blue-400">
+            <Tag className="w-4 h-4" />
+            Lead Sources
+          </Link>
+          <button onClick={findDuplicates}
+            className="px-4 py-2.5 border border-amber-300 bg-amber-50 text-amber-700 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-amber-100 dark:bg-amber-900/20 dark:border-amber-700 dark:text-amber-400">
+            <Search className="w-4 h-4" />
+            Find Duplicates
+          </button>
+        </div>
       </div>
 
       {/* Search + Filter + Smart Lists bar */}
@@ -564,6 +583,20 @@ function ProspectsPage() {
               </div>
             </div>
           )}
+          {filterOptions.sourceTypes?.length > 0 && (
+            <div>
+              <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">Source Type</h4>
+              <div className="max-h-48 overflow-y-auto space-y-1">
+                {filterOptions.sourceTypes.map(s => (
+                  <label key={s.source_type} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 px-1 rounded">
+                    <input type="checkbox" checked={sourceTypeFilter.includes(s.source_type)} onChange={() => toggleFilterValue("source_type", s.source_type, sourceTypeFilter)} className="rounded" />
+                    <span className="text-gray-700 dark:text-gray-300 capitalize">{s.source_type}</span>
+                    <span className="text-gray-400 text-xs ml-auto">{s.count.toLocaleString()}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
           <div>
             <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">Status</h4>
             <div className="space-y-1 mb-4">
@@ -680,17 +713,43 @@ function ProspectsPage() {
           {/* Bulk Enrich */}
           <button onClick={async () => {
             setBulkLoading(true);
+            setBulkEnrichProgress(null);
             try {
-              await fetch("/api/v1/sales/enrich", {
+              const res = await fetch("/api/v1/prospects/enrich-bulk", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ companyIds: Array.from(selected) }),
+                body: JSON.stringify({ companyIds: Array.from(selected), skipWithEmail: false }),
               });
+              const reader = res.body?.getReader();
+              const decoder = new TextDecoder();
+              if (reader) {
+                let buffer = "";
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  buffer += decoder.decode(value, { stream: true });
+                  const lines = buffer.split("\n\n");
+                  buffer = lines.pop() || "";
+                  for (const line of lines) {
+                    const match = line.match(/^data: (.+)$/);
+                    if (match) {
+                      try {
+                        const data = JSON.parse(match[1]);
+                        if (data.type === "progress") {
+                          setBulkEnrichProgress({ done: data.done, total: data.total });
+                        } else if (data.type === "complete") {
+                          setBulkEnrichProgress(null);
+                        }
+                      } catch {}
+                    }
+                  }
+                }
+              }
               await refreshProspects();
-            } finally { setBulkLoading(false); }
+            } finally { setBulkLoading(false); setBulkEnrichProgress(null); }
           }} disabled={bulkLoading}
             className="px-3 py-1.5 bg-amber-600 text-white text-sm rounded-lg hover:bg-amber-700 disabled:opacity-50 font-medium flex items-center gap-1.5">
-            ✨ Enrich
+            ✨ {bulkEnrichProgress ? `Enriching ${bulkEnrichProgress.done}/${bulkEnrichProgress.total}` : "Enrich"}
           </button>
 
           {/* Bulk ICP Classify */}

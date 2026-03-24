@@ -9,7 +9,7 @@ export async function GET(
   const { id } = await params;
 
   const company = sqlite.prepare(`
-    SELECT c.*, u.name as owner_name
+    SELECT c.*, COALESCE(c.owner_name, u.name) as owner_name, u.name as assigned_owner_name
     FROM companies c
     LEFT JOIN users u ON u.id = c.owner_id
     WHERE c.id = ?

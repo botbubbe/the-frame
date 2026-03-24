@@ -46,10 +46,22 @@ interface Company {
   google_rating: number; google_review_count: number;
   enrichment_status: string;
   google_place_id: string;
+  owner_name: string;
+  business_hours: Record<string, string>;
+  facebook_url: string;
+  instagram_url: string;
+  twitter_url: string;
+  linkedin_url: string;
+  yelp_url: string;
+  enriched_at: string;
+  enrichment_source: string;
   disqualify_reason: string;
   segment: string;
   category: string;
   lead_source_detail: string;
+  source_type: string | null;
+  source_id: string | null;
+  source_query: string | null;
   created_at: string; updated_at: string;
 }
 
@@ -126,18 +138,25 @@ export default function CompanyDetailPage() {
   const [dealNotes, setDealNotes] = useState("");
   const [dealSaving, setDealSaving] = useState(false);
   const [enriching, setEnriching] = useState(false);
+  const [newlyEnrichedFields, setNewlyEnrichedFields] = useState<string[]>([]);
   const [showDisqualifyDialog, setShowDisqualifyDialog] = useState(false);
   const [disqualifyReason, setDisqualifyReason] = useState("");
 
   const enrichCompany = async () => {
     if (!company) return;
     setEnriching(true);
+    setNewlyEnrichedFields([]);
     try {
-      await fetch("/api/v1/sales/enrich", {
+      const res = await fetch(`/api/v1/prospects/${company.id}/enrich`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ companyIds: [company.id] }),
       });
+      const result = await res.json();
+      if (result.newFields) {
+        setNewlyEnrichedFields(result.newFields);
+        // Auto-clear badges after 30s
+        setTimeout(() => setNewlyEnrichedFields([]), 30000);
+      }
       // Refresh company data
       const data = await (await fetch(`/api/v1/sales/prospects/${id}`)).json();
       setCompany(data.company);
@@ -565,17 +584,48 @@ export default function CompanyDetailPage() {
                 </div>
               )}
               <div className="grid grid-cols-2 gap-4 text-sm">
-                <InfoRow icon={<Mail className="w-4 h-4" />} label="Email" value={company.email} />
-                <InfoRow icon={<Phone className="w-4 h-4" />} label="Phone" value={company.phone} />
+                <InfoRow icon={<Mail className="w-4 h-4" />} label="Email" value={company.email} isNew={newlyEnrichedFields.includes("email")} />
+                <InfoRow icon={<Phone className="w-4 h-4" />} label="Phone" value={company.phone} isNew={newlyEnrichedFields.includes("phone")} />
                 <InfoRow icon={<MapPin className="w-4 h-4" />} label="Address"
                   value={[company.address, company.city, company.state, company.zip].filter(Boolean).join(", ")} />
-                <InfoRow icon={<Globe className="w-4 h-4" />} label="Website" value={company.website} link />
-                {company.owner_name && <InfoRow icon={<UserPlus className="w-4 h-4" />} label="Owner" value={company.owner_name} />}
+                <InfoRow icon={<Globe className="w-4 h-4" />} label="Website" value={company.website} link isNew={newlyEnrichedFields.includes("website")} />
+                {company.owner_name && <InfoRow icon={<UserPlus className="w-4 h-4" />} label="Owner" value={company.owner_name} isNew={newlyEnrichedFields.includes("owner_name")} />}
                 {company.google_rating && (
                   <InfoRow icon={<Star className="w-4 h-4" />} label="Rating"
-                    value={`${company.google_rating}★ (${company.google_review_count} reviews)`} />
+                    value={`${company.google_rating}★ (${company.google_review_count} reviews)`}
+                    isNew={newlyEnrichedFields.includes("google_rating")} />
                 )}
               </div>
+              {/* Social Media Links */}
+              {(company.facebook_url || company.instagram_url || company.twitter_url || company.linkedin_url || company.yelp_url) && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {company.facebook_url && (
+                    <a href={company.facebook_url} target="_blank" className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 ${newlyEnrichedFields.includes("facebook_url") ? "ring-2 ring-green-400" : ""}`}>
+                      Facebook <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                  {company.instagram_url && (
+                    <a href={company.instagram_url} target="_blank" className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-pink-50 text-pink-700 hover:bg-pink-100 ${newlyEnrichedFields.includes("instagram_url") ? "ring-2 ring-green-400" : ""}`}>
+                      Instagram <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                  {company.twitter_url && (
+                    <a href={company.twitter_url} target="_blank" className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-sky-50 text-sky-700 hover:bg-sky-100 ${newlyEnrichedFields.includes("twitter_url") ? "ring-2 ring-green-400" : ""}`}>
+                      Twitter/X <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                  {company.linkedin_url && (
+                    <a href={company.linkedin_url} target="_blank" className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-blue-50 text-blue-800 hover:bg-blue-100 ${newlyEnrichedFields.includes("linkedin_url") ? "ring-2 ring-green-400" : ""}`}>
+                      LinkedIn <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                  {company.yelp_url && (
+                    <a href={company.yelp_url} target="_blank" className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-50 text-red-700 hover:bg-red-100 ${newlyEnrichedFields.includes("yelp_url") ? "ring-2 ring-green-400" : ""}`}>
+                      Yelp <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                </div>
+              )}
               {/* Tags */}
               {company.tags?.length > 0 && (
                 <div className="mt-4 flex flex-wrap gap-1.5">
@@ -705,6 +755,32 @@ export default function CompanyDetailPage() {
               <CardTitle className="text-base">Lead Source</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              {/* Source Type Badge (clickable — links to filtered list) */}
+              {company.source_type && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Source Type</p>
+                  <Link
+                    href={`/prospects?${new URLSearchParams({ source_type: company.source_type, ...(company.source_id ? { source_id: company.source_id } : {}) })}`}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors cursor-pointer"
+                  >
+                    {company.source_type === "storemapper" ? "🗺 StoreMapper" :
+                     company.source_type === "outscraper" ? "🔍 Outscraper" :
+                     company.source_type === "manual" ? "✋ Manual" :
+                     company.source_type === "csv" ? "📄 CSV Import" :
+                     company.source_type === "chrome-ext" ? "🌐 Chrome Extension" :
+                     company.source_type}
+                    {company.source_id && <span className="font-mono opacity-75">#{company.source_id}</span>}
+                    <ExternalLink className="w-3 h-3" />
+                  </Link>
+                </div>
+              )}
+              {company.source_query && (
+                <div>
+                  <p className="text-xs text-gray-500">Source Query</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 italic">&ldquo;{company.source_query}&rdquo;</p>
+                </div>
+              )}
+              {/* Legacy source display */}
               {company.source ? (
                 <div className="flex flex-wrap gap-1.5">
                   {company.source.split("|").map(s => s.trim()).filter(Boolean).map(s => (
@@ -713,9 +789,9 @@ export default function CompanyDetailPage() {
                     </span>
                   ))}
                 </div>
-              ) : (
+              ) : !company.source_type ? (
                 <p className="text-sm text-gray-400">Unknown source</p>
-              )}
+              ) : null}
               {company.segment && (
                 <div>
                   <p className="text-xs text-gray-500">Segment</p>
@@ -807,20 +883,27 @@ export default function CompanyDetailPage() {
   );
 }
 
-function InfoRow({ icon, label, value, link }: { icon: React.ReactNode; label: string; value: string | null; link?: boolean }) {
+function InfoRow({ icon, label, value, link, isNew }: { icon: React.ReactNode; label: string; value: string | null; link?: boolean; isNew?: boolean }) {
   if (!value) return null;
   return (
     <div className="flex items-start gap-2">
       <span className="text-gray-400 mt-0.5">{icon}</span>
       <div>
-        <p className="text-xs text-gray-500">{label}</p>
+        <p className="text-xs text-gray-500 flex items-center gap-1.5">
+          {label}
+          {isNew && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 animate-pulse">
+              NEW
+            </span>
+          )}
+        </p>
         {link ? (
           <a href={value.startsWith("http") ? value : `https://${value}`} target="_blank"
             className="text-blue-600 hover:underline flex items-center gap-1">
             {value} <ExternalLink className="w-3 h-3" />
           </a>
         ) : (
-          <p className="text-gray-900 dark:text-gray-100">{value}</p>
+          <p className={`text-gray-900 dark:text-gray-100 ${isNew ? "font-medium text-green-700 dark:text-green-400" : ""}`}>{value}</p>
         )}
       </div>
     </div>

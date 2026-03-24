@@ -69,5 +69,19 @@ export async function GET() {
     FROM companies WHERE icp_score IS NOT NULL
   `).get() as { min: number; max: number };
 
-  return NextResponse.json({ states, statuses, sources, categories, segments, companyCategories, icpRange });
+  // Source types with counts
+  const sourceTypes = sqlite.prepare(`
+    SELECT source_type, count(*) as count FROM companies 
+    WHERE source_type IS NOT NULL AND source_type != '' 
+    GROUP BY source_type ORDER BY count DESC
+  `).all() as { source_type: string; count: number }[];
+
+  // Source IDs with counts (top 30)
+  const sourceIds = sqlite.prepare(`
+    SELECT source_type, source_id, count(*) as count FROM companies 
+    WHERE source_id IS NOT NULL AND source_id != '' 
+    GROUP BY source_type, source_id ORDER BY count DESC LIMIT 30
+  `).all() as { source_type: string; source_id: string; count: number }[];
+
+  return NextResponse.json({ states, statuses, sources, categories, segments, companyCategories, icpRange, sourceTypes, sourceIds });
 }

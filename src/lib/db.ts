@@ -51,6 +51,26 @@ try {
 } catch { /* column already exists */ }
 
 try {
+  sqlite.exec("ALTER TABLE companies ADD COLUMN source_type TEXT");
+} catch { /* column already exists */ }
+
+try {
+  sqlite.exec("ALTER TABLE companies ADD COLUMN source_id TEXT");
+} catch { /* column already exists */ }
+
+try {
+  sqlite.exec("ALTER TABLE companies ADD COLUMN source_query TEXT");
+} catch { /* column already exists */ }
+
+try {
+  sqlite.exec("CREATE INDEX idx_companies_source_type ON companies (source_type)");
+} catch { /* index already exists */ }
+
+try {
+  sqlite.exec("CREATE INDEX idx_companies_source_id ON companies (source_id)");
+} catch { /* index already exists */ }
+
+try {
   sqlite.exec("ALTER TABLE users ADD COLUMN password_reset_token TEXT");
 } catch { /* column already exists */ }
 

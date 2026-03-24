@@ -22,6 +22,8 @@ export async function GET(request: NextRequest) {
   const segmentFilter = params.getAll("segment");
   const hasEmail = params.get("has_email");
   const hasPhone = params.get("has_phone");
+  const sourceTypeFilter = params.getAll("source_type");
+  const sourceIdFilter = params.getAll("source_id");
 
   const offset = (page - 1) * limit;
 
@@ -94,6 +96,16 @@ export async function GET(request: NextRequest) {
     whereClauses.push(`(c.email IS NULL OR c.email = '')`);
   }
 
+  if (sourceTypeFilter.length > 0) {
+    whereClauses.push(`c.source_type IN (${sourceTypeFilter.map(() => "?").join(",")})`);
+    whereParams.push(...sourceTypeFilter);
+  }
+
+  if (sourceIdFilter.length > 0) {
+    whereClauses.push(`c.source_id IN (${sourceIdFilter.map(() => "?").join(",")})`);
+    whereParams.push(...sourceIdFilter);
+  }
+
   if (hasPhone === "true") {
     whereClauses.push(`c.phone IS NOT NULL AND c.phone != ''`);
   } else if (hasPhone === "false") {
@@ -119,7 +131,8 @@ export async function GET(request: NextRequest) {
   // Data query
   const rows = sqlite.prepare(`
     SELECT c.id, c.name, c.city, c.state, c.type, c.source, c.phone, c.email, 
-           c.icp_score, c.status, c.tags, c.website, c.domain, c.enrichment_status, c.segment, c.category
+           c.icp_score, c.status, c.tags, c.website, c.domain, c.enrichment_status, c.segment, c.category,
+           c.source_type, c.source_id, c.source_query
     FROM companies c
     ${whereSQL}
     ORDER BY ${sortCol} ${order} NULLS LAST
