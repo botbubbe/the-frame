@@ -3,7 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { sqlite } from "@/lib/db";
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+function getResend() {
+  return new Resend(process.env.RESEND_API_KEY);
+}
 
 const RATE_LIMIT_MAX = 3;
 const RATE_LIMIT_WINDOW_MIN = 5;
@@ -60,7 +62,7 @@ export async function POST(req: NextRequest) {
     const verifyUrl = `${appUrl}/api/auth/magic-link/verify?token=${token}`;
 
     // Send email via Resend
-    await resend.emails.send({
+    await getResend().emails.send({
       from: "noreply@getjaxy.com",
       to: normalizedEmail,
       subject: "Sign in to The Frame",
