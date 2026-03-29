@@ -262,11 +262,11 @@ const linkedCompanies = db.prepare(`
     (SELECT s.longitude FROM stores s WHERE s.company_id = c.id LIMIT 1) as lng
   FROM companies c
   INNER JOIN company_brand_links cbl ON cbl.company_id = c.id
-  WHERE c.status != 'rejected'
+  WHERE c.status NOT IN ('not_qualified', 'rejected')
 `).all() as { id: string; country: string | null; state: string | null; status: string; lat: number | null; lng: number | null }[];
 
 const dqStmt = db.prepare(`
-  UPDATE companies SET status = 'rejected', disqualify_reason = 'Non-US/CA location', updated_at = datetime('now')
+  UPDATE companies SET status = 'not_qualified', disqualify_reason = 'Non-US/CA location', updated_at = datetime('now')
   WHERE id = ?
 `);
 
