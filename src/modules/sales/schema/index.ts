@@ -120,6 +120,7 @@ export const brandAccounts = sqliteTable("brand_accounts", {
   usLocations: integer("us_locations").default(0),
   totalLocations: integer("total_locations").default(0),
   topCountry: text("top_country"),
+  notes: text("notes"),
   createdAt: timestamp("created_at"),
   updatedAt: timestamp("updated_at"),
 }, (table) => [

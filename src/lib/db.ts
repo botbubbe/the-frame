@@ -106,6 +106,7 @@ try {
     us_locations INTEGER DEFAULT 0,
     total_locations INTEGER DEFAULT 0,
     top_country TEXT,
+    notes TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
   )`);
@@ -129,6 +130,8 @@ try {
     created_at TEXT DEFAULT (datetime('now'))
   )`);
   sqlite.exec(`CREATE UNIQUE INDEX IF NOT EXISTS magic_link_tokens_token_unique ON magic_link_tokens (token)`);
+  // Ensure notes column on brand_accounts
+  try { sqlite.exec("ALTER TABLE brand_accounts ADD COLUMN notes TEXT"); } catch { /* exists */ }
 } catch (e) { console.error("[db] Table ensure error:", e); }
 
 // Auto-run migrations on startup (idempotent — safe to run every time)

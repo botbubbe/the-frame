@@ -37,6 +37,7 @@ interface BrandDetail {
   us_locations: number;
   total_locations: number;
   top_country: string | null;
+  notes: string | null;
   match_count: number;
 }
 
@@ -238,6 +239,31 @@ export default function BrandDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Notes */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm text-muted-foreground">Notes</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <textarea
+            className="w-full min-h-[80px] p-2 text-sm border rounded-md resize-y bg-background"
+            placeholder="Add notes about this brand (e.g. why it's relevant or irrelevant)..."
+            defaultValue={brand.notes || ""}
+            onBlur={async (e) => {
+              const val = e.target.value;
+              if (val !== (brand.notes || "")) {
+                await fetch(`/api/v1/brands/${brand.id}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ notes: val }),
+                });
+                setBrand(prev => prev ? { ...prev, notes: val } : null);
+              }
+            }}
+          />
+        </CardContent>
+      </Card>
 
       <Separator />
 

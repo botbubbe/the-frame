@@ -46,6 +46,7 @@ export async function PATCH(
     sector: "sector",
     relevance: "relevance",
     brand_type: "brand_type",
+    notes: "notes",
   };
 
   const setClauses: string[] = [];
