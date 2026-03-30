@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
 
     // Send email via Resend
     await getResend().emails.send({
-      from: "noreply@getjaxy.com",
+      from: "The Frame <noreply@theframe.getjaxy.com>",
       to: normalizedEmail,
       subject: "Sign in to The Frame",
       html: `
