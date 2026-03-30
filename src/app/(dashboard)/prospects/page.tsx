@@ -3,7 +3,16 @@
 import { Suspense, useState, useEffect, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ListFilter, Bookmark, Plus, X, ChevronRight, Download, Search, Merge, AlertTriangle, CheckCircle2, ExternalLink, Globe, Phone, Mail, MapPin, Star, Tag } from "lucide-react";
+import { ListFilter, Bookmark, Plus, X, ChevronRight, Download, Search, Merge, AlertTriangle, CheckCircle2, ExternalLink, Globe, Phone, Mail, MapPin, Star, Tag, ChevronsUpDown, Check } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+} from "@/components/ui/command";
 
 const statusLabels: Record<string, string> = {
   new: "New",
@@ -31,6 +40,7 @@ interface Prospect {
   source_type: string | null;
   source_id: string | null;
   source_query: string | null;
+  segment: string | null;
 }
 
 interface FilterOptions {
@@ -80,6 +90,80 @@ interface ApiResponse {
   page: number;
   limit: number;
   totalPages: number;
+}
+
+function SegmentCell({
+  value,
+  segments,
+  onChange,
+}: {
+  value: string | null;
+  segments: { segment: string; count: number }[];
+  onChange: (segment: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-xs cursor-pointer min-w-[60px]"
+      >
+        {value ? (
+          <span className="text-teal-700 dark:text-teal-400 font-medium">{value}</span>
+        ) : (
+          <span className="text-gray-400 italic">—</span>
+        )}
+        <ChevronsUpDown className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100" />
+      </PopoverTrigger>
+      <PopoverContent className="w-[200px] p-0" align="start">
+        <Command>
+          <CommandInput
+            placeholder="Search or create..."
+            value={search}
+            onValueChange={setSearch}
+          />
+          <CommandList>
+            <CommandEmpty>
+              {search.trim() ? (
+                <button
+                  className="w-full px-2 py-1.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                  onClick={() => { onChange(search.trim()); setOpen(false); setSearch(""); }}
+                >
+                  Create &quot;{search.trim()}&quot;
+                </button>
+              ) : (
+                "No segments"
+              )}
+            </CommandEmpty>
+            <CommandGroup>
+              {value && (
+                <CommandItem onSelect={() => { onChange(""); setOpen(false); setSearch(""); }}>
+                  <X className="w-3 h-3 text-gray-400 mr-1" /> Clear
+                </CommandItem>
+              )}
+              {segments.map(s => (
+                <CommandItem
+                  key={s.segment}
+                  value={s.segment}
+                  data-checked={value === s.segment}
+                  onSelect={() => { onChange(s.segment); setOpen(false); setSearch(""); }}
+                >
+                  {s.segment}
+                  <span className="ml-auto text-xs text-gray-400">{s.count}</span>
+                </CommandItem>
+              ))}
+              {search.trim() && !segments.some(s => s.segment.toLowerCase() === search.trim().toLowerCase()) && (
+                <CommandItem onSelect={() => { onChange(search.trim()); setOpen(false); setSearch(""); }}>
+                  <Plus className="w-3 h-3 mr-1" /> Create &quot;{search.trim()}&quot;
+                </CommandItem>
+              )}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 export default function ProspectsPageWrapper() {
@@ -1167,6 +1251,7 @@ function ProspectsPage() {
                 <th className="px-4 py-3">City</th>
                 <th className="px-4 py-3 cursor-pointer hover:text-gray-900" onClick={() => toggleSort("state")}>State {sortIcon("state")}</th>
                 <th className="px-4 py-3">Category</th>
+                <th className="px-4 py-3">Segment</th>
                 <th className="px-4 py-3">Source</th>
                 <th className="px-4 py-3">Phone</th>
                 <th className="px-4 py-3">Email</th>
@@ -1176,9 +1261,9 @@ function ProspectsPage() {
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
               {loading ? (
-                <tr><td colSpan={10} className="px-4 py-12 text-center text-gray-400">Loading...</td></tr>
+                <tr><td colSpan={11} className="px-4 py-12 text-center text-gray-400">Loading...</td></tr>
               ) : prospects.length === 0 ? (
-                <tr><td colSpan={10} className="px-4 py-12 text-center text-gray-400">No prospects found</td></tr>
+                <tr><td colSpan={11} className="px-4 py-12 text-center text-gray-400">No prospects found</td></tr>
               ) : prospects.map(p => (
                 <tr key={p.id} className={`group hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer ${selected.has(p.id) ? "bg-blue-50/50 dark:bg-blue-900/10" : ""}`}
                   onClick={(e) => {
@@ -1250,6 +1335,22 @@ function ProspectsPage() {
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{p.city}</td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{p.state}</td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{p.tags?.[0] || "—"}</td>
+                  <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                    <SegmentCell
+                      value={p.segment}
+                      segments={filterOptions?.segments || []}
+                      onChange={async (newSegment) => {
+                        try {
+                          await fetch(`/api/v1/sales/prospects/${p.id}`, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ segment: newSegment || null }),
+                          });
+                          setProspects(prev => prev.map(pp => pp.id === p.id ? { ...pp, segment: newSegment || null } : pp));
+                        } catch (e) { console.error("Failed to update segment", e); }
+                      }}
+                    />
+                  </td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-400 text-xs">{p.source?.split("|")[0] || "—"}</td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-400 text-xs">{p.phone || "—"}</td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-400 text-xs max-w-[180px] truncate">{p.email || "—"}</td>

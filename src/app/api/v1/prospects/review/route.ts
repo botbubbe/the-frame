@@ -9,6 +9,7 @@ export async function GET(request: NextRequest) {
   const sourceType = params.get("source_type");
   const state = params.getAll("state");
   const category = params.get("category");
+  const segment = params.get("segment");
   const status = params.get("status") || "new";
   const sort = params.get("sort") || "random";
 
@@ -30,6 +31,10 @@ export async function GET(request: NextRequest) {
   if (category && category !== "all") {
     whereClauses.push("c.category LIKE ?");
     whereParams.push(`%${category}%`);
+  }
+  if (segment && segment !== "all") {
+    whereClauses.push("c.segment = ?");
+    whereParams.push(segment);
   }
 
   const whereSQL = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";

@@ -6,7 +6,7 @@ import { Suspense } from "react";
 import {
   Globe, Phone, Mail, MapPin, Star, Search, ExternalLink,
   CheckCircle, XCircle, SkipForward, ChevronLeft, ChevronRight,
-  Filter,
+  Filter, ChevronsUpDown, Check, Tag, X, Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+} from "@/components/ui/command";
 import { toast } from "sonner";
 
 interface Prospect {
@@ -44,8 +53,9 @@ interface Prospect {
 
 interface PendingUpdate {
   id: string;
-  status: string;
+  status?: string;
   disqualify_reason?: string;
+  segment?: string;
 }
 
 function ReviewQueueInner() {
@@ -59,6 +69,7 @@ function ReviewQueueInner() {
   const [categoryFilter, setCategoryFilter] = useState(searchParams.get("category") || "all");
   const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "new");
   const [sortBy, setSortBy] = useState(searchParams.get("sort") || "random");
+  const [segmentFilter, setSegmentFilter] = useState(searchParams.get("segment") || "all");
 
   // Data
   const [prospects, setProspects] = useState<Prospect[]>([]);
@@ -85,7 +96,13 @@ function ReviewQueueInner() {
     sourceTypes: { source_type: string; count: number }[];
     states: { state: string; count: number }[];
     categories: { category: string; count: number }[];
+    segments: { segment: string; count: number }[];
   } | null>(null);
+
+  // Segment combobox state
+  const [segmentOpen, setSegmentOpen] = useState(false);
+  const [segmentSearch, setSegmentSearch] = useState("");
+  const segmentTriggerRef = useRef<HTMLButtonElement>(null);
 
   // Swipe support
   const touchStart = useRef<{ x: number; y: number } | null>(null);
@@ -107,6 +124,7 @@ function ReviewQueueInner() {
     if (stateFilter !== "all") params.append("state", stateFilter);
     if (categoryFilter !== "all") params.set("category", categoryFilter);
     if (statusFilter !== "all") params.set("status", statusFilter);
+    if (segmentFilter !== "all") params.set("segment", segmentFilter);
     params.set("sort", sortBy);
 
     try {
@@ -128,7 +146,7 @@ function ReviewQueueInner() {
     } finally {
       setLoading(false);
     }
-  }, [sourceType, stateFilter, categoryFilter, statusFilter, sortBy]);
+  }, [sourceType, stateFilter, categoryFilter, statusFilter, segmentFilter, sortBy]);
 
   useEffect(() => {
     fetchProspects(0, false);
@@ -231,6 +249,21 @@ function ReviewQueueInner() {
     }
   }, [current, toast]);
 
+  // Update segment for current prospect
+  const updateSegment = useCallback((newSegment: string) => {
+    if (!current) return;
+    // Queue segment update in batch
+    pendingUpdates.current.push({
+      id: current.id,
+      segment: newSegment,
+    });
+    // Update local state
+    setProspects(prev => prev.map(p => p.id === current.id ? { ...p, segment: newSegment || null } : p));
+    toast.success(`Segment → ${newSegment || "cleared"}`);
+    setSegmentOpen(false);
+    setSegmentSearch("");
+  }, [current]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -262,6 +295,9 @@ function ReviewQueueInner() {
           if (current) {
             window.open(`https://www.google.com/maps/search/${encodeURIComponent(`${current.name} ${current.address || ""} ${current.city || ""} ${current.state || ""}`.trim())}`, "_blank");
           }
+          break;
+        case "t":
+          setSegmentOpen(true);
           break;
         case "arrowleft":
           if (currentIndex > 0) setCurrentIndex(i => i - 1);
@@ -364,6 +400,22 @@ function ReviewQueueInner() {
             ))}
           </SelectContent>
         </Select>
+
+        {filterOptions?.segments?.length ? (
+          <Select value={segmentFilter} onValueChange={v => setSegmentFilter(v)}>
+            <SelectTrigger className="w-[150px] h-9 text-sm">
+              <SelectValue placeholder="Segment" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Segments</SelectItem>
+              {filterOptions.segments.map(s => (
+                <SelectItem key={s.segment} value={s.segment}>
+                  {s.segment} ({s.count})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : null}
 
         <Select value={statusFilter} onValueChange={v => setStatusFilter(v)}>
           <SelectTrigger className="w-[120px] h-9 text-sm">
@@ -491,11 +543,66 @@ function ReviewQueueInner() {
                   <span className="text-gray-400">Source query:</span> {current.source_query}
                 </div>
               )}
-              {current.segment && (
-                <div className="text-sm text-gray-500">
-                  <span className="text-gray-400">Segment:</span> {current.segment}
-                </div>
-              )}
+              {/* Segment Combobox */}
+              <div className="text-sm">
+                <span className="text-gray-400 mr-1.5">Segment:</span>
+                <Popover open={segmentOpen} onOpenChange={setSegmentOpen}>
+                  <PopoverTrigger
+                    ref={segmentTriggerRef}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-sm cursor-pointer"
+                  >
+                    {current.segment || <span className="text-gray-400 italic">none</span>}
+                    <ChevronsUpDown className="w-3 h-3 text-gray-400" />
+                    <kbd className="ml-1 text-[10px] bg-gray-100 dark:bg-gray-700 px-1 rounded">T</kbd>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[220px] p-0" align="start">
+                    <Command>
+                      <CommandInput
+                        placeholder="Search or create..."
+                        value={segmentSearch}
+                        onValueChange={setSegmentSearch}
+                      />
+                      <CommandList>
+                        <CommandEmpty>
+                          {segmentSearch.trim() ? (
+                            <button
+                              className="w-full px-2 py-1.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                              onClick={() => updateSegment(segmentSearch.trim())}
+                            >
+                              Create &quot;{segmentSearch.trim()}&quot;
+                            </button>
+                          ) : (
+                            "No segments found"
+                          )}
+                        </CommandEmpty>
+                        <CommandGroup>
+                          {current.segment && (
+                            <CommandItem onSelect={() => updateSegment("")}>
+                              <X className="w-3 h-3 text-gray-400 mr-1" /> Clear segment
+                            </CommandItem>
+                          )}
+                          {filterOptions?.segments?.map(s => (
+                            <CommandItem
+                              key={s.segment}
+                              value={s.segment}
+                              data-checked={current.segment === s.segment}
+                              onSelect={() => updateSegment(s.segment)}
+                            >
+                              {s.segment}
+                              <span className="ml-auto text-xs text-gray-400">{s.count}</span>
+                            </CommandItem>
+                          ))}
+                          {segmentSearch.trim() && !filterOptions?.segments?.some(s => s.segment.toLowerCase() === segmentSearch.trim().toLowerCase()) && (
+                            <CommandItem onSelect={() => updateSegment(segmentSearch.trim())}>
+                              <Plus className="w-3 h-3 mr-1" /> Create &quot;{segmentSearch.trim()}&quot;
+                            </CommandItem>
+                          )}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
 
               {/* Tags */}
               {current.tags && current.tags.length > 0 && (
@@ -648,6 +755,7 @@ function ReviewQueueInner() {
         <span><kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">A</kbd> Qualify</span>
         <span><kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">R</kbd>/<kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">D</kbd> Reject</span>
         <span><kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">S</kbd> Skip</span>
+        <span><kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">T</kbd> Segment</span>
         <span><kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">W</kbd> Website</span>
         <span><kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">G</kbd> Google</span>
         <span><kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">M</kbd> Maps</span>
