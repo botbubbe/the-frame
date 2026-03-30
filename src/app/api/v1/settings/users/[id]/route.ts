@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/get-session";
 import { sqlite } from "@/lib/db";
 
 // PATCH /api/v1/settings/users/[id] — update role or active status
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.user.role !== "owner") {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (user.role !== "owner") {
     return NextResponse.json({ error: "Only owners can edit users" }, { status: 403 });
   }
 
@@ -14,7 +14,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = await req.json();
 
   // Can't deactivate yourself
-  if (body.is_active === false && id === session.user.id) {
+  if (body.is_active === false && id === user.id) {
     return NextResponse.json({ error: "You cannot deactivate yourself" }, { status: 400 });
   }
 

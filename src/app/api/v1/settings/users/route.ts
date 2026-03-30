@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/get-session";
 import { sqlite } from "@/lib/db";
 import { sendInviteEmail } from "@/lib/email";
 import bcrypt from "bcryptjs";
 
 // GET /api/v1/settings/users — list all users
 export async function GET() {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const users = sqlite
     .prepare("SELECT id, email, name, role, is_active, last_login_at, created_at FROM users ORDER BY created_at ASC")
@@ -18,9 +18,9 @@ export async function GET() {
 
 // POST /api/v1/settings/users — invite new user
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.user.role !== "owner") {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (user.role !== "owner") {
     return NextResponse.json({ error: "Only owners can invite users" }, { status: 403 });
   }
 
